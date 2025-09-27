@@ -88,7 +88,24 @@ class ValidClassNameSniff implements Sniff
                 $error   = '%s name is not valid; consider %s instead';
                 $data    = $errorData;
                 $data[]  = $newName;
-                $phpcsFile->addError($error, $stackPtr, 'Invalid', $data);
+
+                $preview = '';
+                while ( $stackPtr < $className) {
+                    $preview .= $tokens[$stackPtr++]['content'];
+                }
+
+                $fixOptions = array(
+                    array(
+                    'description' => "Suggestion",
+                    'newContent' => $newName,
+                    'preview' => $preview . $newName,
+                ),
+                );
+                $selection = $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'Invalid', $data, $fixOptions);
+                if (is_numeric( $selection ) && isset($fixOptions[$selection])) {
+                    $selectedFix = $fixOptions[$selection];
+                    $phpcsFile->fixer->replaceToken($className, $selectedFix['newContent']);
+                }
             }
         }
     }

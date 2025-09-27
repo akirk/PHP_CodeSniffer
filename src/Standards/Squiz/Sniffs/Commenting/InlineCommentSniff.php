@@ -249,16 +249,14 @@ class InlineCommentSniff implements Sniff
                 $ender = trim($ender, ' ,');
                 $data  = [$ender];
 
-                // Get the previous and next line for context:
-                $prevLine = false;//$phpcsFile->findPrevious(T_WHITESPACE, ($stackPtr - 1), null, true);
+                $prevLine = $phpcsFile->findPrevious(T_WHITESPACE, ($lastCommentToken - 1), null, true, PHP_EOL);
                 if ($prevLine !== false) {
                     $prevLine = rtrim($tokens[$prevLine]['content']);
                 } else {
                     $prevLine = '';
                 }
 
-                $nextLine = false;//$phpcsFile->findNext(T_WHITESPACE, ($lastCommentToken + 1), null, true);
-
+                $nextLine = $phpcsFile->findNext(T_WHITESPACE, ($lastCommentToken + 1), null, true, PHP_EOL);
                 if ($nextLine !== false) {
                     $nextLine = rtrim($tokens[$nextLine]['content']);
                 } else {
@@ -348,28 +346,24 @@ class InlineCommentSniff implements Sniff
         $options = [
             [
                 'description' => 'Add period (.)',
-                'preview' => '// ' . rtrim($commentText) . '.',
                 'newContent' => '// ' . rtrim($commentText) . '.' . PHP_EOL,
             ],
             [
                 'description' => 'Add exclamation mark (!)',
-                'preview' => '// ' . rtrim($commentText) . '!',
                 'newContent' => '// ' . rtrim($commentText) . '!' . PHP_EOL,
             ],
             [
                 'description' => 'Add question mark (?)',
-                'preview' => '// ' . rtrim($commentText) . '?',
                 'newContent' => '// ' . rtrim($commentText) . '?' . PHP_EOL,
             ],
             [
                 'description' => 'Remove comment',
-                'preview' => '',
                 'newContent' => '',
             ],
         ];
 
         foreach ($options as $key => $option) {
-            $options[$key]['preview'] = PHP_EOL . trim( $prevLine . PHP_EOL . $option['preview'] . $nextLine );
+            $options[$key]['preview'] = PHP_EOL . trim( $prevLine . PHP_EOL . $option['newContent'] . $nextLine );
         }
         return $options;
     }

@@ -1093,8 +1093,9 @@ class Runner
             foreach ($interactiveFixOptions as $index => $fixOption) {
                 $number = $index + 1;
                 echo "  [$number] {$fixOption['description']}" . PHP_EOL;
-                if (isset($fixOption['preview'])) {
-                    echo "      Preview: \033[36m{$fixOption['preview']}\033[0m" . PHP_EOL;
+                $preview = $fixOption['preview'] ?? $fixOption['newContent'] ?? null;
+                if ( $preview ) {
+                    echo "      Preview: \033[36m{$preview}\033[0m" . PHP_EOL;
                 }
             }
             echo PHP_EOL;
