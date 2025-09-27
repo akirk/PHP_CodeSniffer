@@ -460,6 +460,10 @@ final class Help
                 'argument'    => '-a',
                 'description' => 'Run in interactive mode, pausing after each file.',
             ],
+            'auto1'      => [
+                'argument'    => '-1',
+                'description' => 'Automatically choose the first option when prompted in interactive mode.',
+            ],
             'bootstrap'  => [
                 'argument'    => '--bootstrap=<bootstrap>',
                 'description' => 'Run the specified file(s) before processing begins. A list of files can be provided, separated by commas.',

@@ -1532,7 +1532,8 @@ class Config
     {
         $longOptions   = Help::DEFAULT_LONG_OPTIONS;
         $longOptions[] = 'suffix';
-        $shortOptions  = Help::DEFAULT_SHORT_OPTIONS;
+        $longOptions[] = 'auto1';
+        $shortOptions  = Help::DEFAULT_SHORT_OPTIONS . 'a';
 
         (new Help($this, $longOptions, $shortOptions))->display();
     }
