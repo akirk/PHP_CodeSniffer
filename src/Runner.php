@@ -932,7 +932,7 @@ class Runner
      */
     private function handlePhpcbfInteractiveMode(File $file)
     {
-        echo PHP_EOL . "\033[1m" . 'PHPCBF INTERACTIVE MODE - ' . basename($file->path) . "\033[0m" . PHP_EOL;
+        echo "\033[1m" . 'PHPCBF INTERACTIVE MODE - ' . basename($file->path) . "\033[0m" . PHP_EOL . PHP_EOL;
 
         foreach ( array( 'errors' => $file->getErrors(), 'warnings' => $file->getWarnings()) as $type => $violations ) {
             foreach ( $violations as $line => $lineViolations) {
@@ -1007,7 +1007,7 @@ class Runner
                     echo "      Current: \033[31m{$current}\033[0m" . PHP_EOL;
                 }
                 $preview = $fixOption['preview'] ?? $fixOption['newContent'] ?? null;
-                if ($preview) {
+                if ($preview !== null) {
                     echo "      Preview: \033[32m{$preview}\033[0m" . PHP_EOL;
                 }
             }
