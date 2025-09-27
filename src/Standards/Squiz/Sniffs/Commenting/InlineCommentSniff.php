@@ -232,7 +232,16 @@ class InlineCommentSniff implements Sniff
 
         if (preg_match('/^\p{Ll}/u', $commentText) === 1) {
             $error = 'Inline comments must start with a capital letter';
-            $phpcsFile->addError($error, $stackPtr, 'NotCapital');
+            $fixOptions = [
+                [
+                    'description' => "Suggestion",
+                    'newContent' => '// ' . ucfirst( $commentText ) . PHP_EOL,
+                ],
+            ];
+            $selection = $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'NotCapital', [], $fixOptions);
+            if (is_numeric( $selection ) && isset($fixOptions[$selection])) {
+                $phpcsFile->fixer->replaceToken($lastCommentToken, $fixOptions[$selection]['newContent']);
+            }
         }
 
         // Only check the end of comment character if the start of the comment
@@ -269,8 +278,7 @@ class InlineCommentSniff implements Sniff
                 ];
                 $selection = $phpcsFile->addInteractivelyFixableError($error, $lastCommentToken, 'InvalidEndChar', $data, $fixOptions);
                 if (is_numeric( $selection ) && isset($fixOptions[$selection])) {
-                    $selectedFix = $fixOptions[$selection];
-                    $phpcsFile->fixer->replaceToken($lastCommentToken, $selectedFix['newContent']);
+                    $phpcsFile->fixer->replaceToken($lastCommentToken, $fixOptions[$selection]['newContent']);
                 }
             }
         }

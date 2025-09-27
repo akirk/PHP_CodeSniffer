@@ -53,7 +53,24 @@ class ValidClassNameSniff implements Sniff
         // Make sure the first letter is a capital.
         if (preg_match('|^[A-Z]|', $name) === 0) {
             $error = '%s name must begin with a capital letter';
-            $phpcsFile->addError($error, $stackPtr, 'StartWithCapital', $errorData);
+
+            $preview = '';
+            while ( $stackPtr < $className) {
+                $preview .= $tokens[$stackPtr++]['content'];
+            }
+
+            $fixOptions = [
+                [
+                    'description' => "Suggestion",
+                    'newContent' => ucfirst( $name ),
+                    'preview' => $preview . ucfirst( $name ),
+                ],
+            ];
+            $selection = $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'StartWithCapital', $errorData, $fixOptions);
+            if (is_numeric( $selection ) && isset($fixOptions[$selection])) {
+                $phpcsFile->fixer->replaceToken($className, $fixOptions[$selection]['newContent']);
+            }
+
         }
 
         // Check that each new word starts with a capital as well, but don't
@@ -94,17 +111,16 @@ class ValidClassNameSniff implements Sniff
                     $preview .= $tokens[$stackPtr++]['content'];
                 }
 
-                $fixOptions = array(
-                    array(
-                    'description' => "Suggestion",
-                    'newContent' => $newName,
-                    'preview' => $preview . $newName,
-                ),
-                );
+                $fixOptions = [
+                    [
+                        'description' => "Suggestion",
+                        'newContent' => $newName,
+                        'preview' => $preview . $newName,
+                    ],
+                ];
                 $selection = $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'Invalid', $data, $fixOptions);
                 if (is_numeric( $selection ) && isset($fixOptions[$selection])) {
-                    $selectedFix = $fixOptions[$selection];
-                    $phpcsFile->fixer->replaceToken($className, $selectedFix['newContent']);
+                    $phpcsFile->fixer->replaceToken($className, $fixOptions[$selection]['newContent']);
                 }
             }
         }
