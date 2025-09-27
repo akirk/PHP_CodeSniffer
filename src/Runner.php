@@ -185,11 +185,19 @@ class Runner
             // Override some of the command line settings that might break the fixes.
             $this->config->generator    = null;
             $this->config->explain      = false;
-            $this->config->interactive  = false;
             $this->config->cache        = false;
             $this->config->showSources  = false;
-            $this->config->recordErrors = false;
+            // Keep recordErrors true in interactive mode so we can show violation details
+            if ($this->config->interactive === false) {
+                $this->config->recordErrors = false;
+            }
             $this->config->reportFile   = null;
+
+            // Interactive mode settings for PHPCBF
+            if ($this->config->interactive === true) {
+                $this->config->parallel     = 1;
+                $this->config->showProgress = false;
+            }
 
             // Only use the "Cbf" report, but allow for the Performance report as well.
             $originalReports = array_change_key_case($this->config->reports, CASE_LOWER);
@@ -565,7 +573,17 @@ class Runner
         }
 
         try {
+            if ($this->config->interactive === true && PHP_CODESNIFFER_CBF === true) {
+                // In PHPCBF interactive mode, we handle interaction inside processFile()
+                // because we need to do it before fixing.
+                $file->interactiveMode = true;
+                $file->process();
+                $this->handlePhpcbfInteractiveMode($file);
+                $file->ruleset->populateTokenListeners();
+                $file->reloadContent();
+            }
             $file->process();
+
 
             if (PHP_CODESNIFFER_VERBOSITY > 0) {
                 StatusWriter::write('DONE in ' . Timing::getHumanReadableDuration(Timing::getDurationSince($startTime)), 0, 0);
@@ -628,7 +646,7 @@ class Runner
 
         if ($this->config->interactive === true) {
             /*
-                Running interactively.
+                Running interactively in PHPCS.
                 Print the error report for the current file and then wait for user input.
             */
 
@@ -639,6 +657,13 @@ class Runner
                 $numErrors = ($file->getErrorCount() + $file->getWarningCount());
                 if ($numErrors === 0) {
                     continue;
+                }
+
+                if (PHP_CODESNIFFER_CBF === true) {
+                    // For PHPCBF, we don't use the standard PHPCS interactive mode
+                    // since it requires the "full" report which isn't available in PHPCBF
+                    // Interactive mode is handled earlier in processFile()
+                    break;
                 }
 
                 $this->reporter->printReport('full');
@@ -894,5 +919,504 @@ class Runner
                 }
             }
         );
+    }
+
+
+    /**
+     * Handle PHPCBF interactive mode for a single file.
+     *
+     * @param \PHP_CodeSniffer\Files\File $file The file being processed.
+     *
+     * @return void
+     * @throws \PHP_CodeSniffer\Exceptions\DeepExitException
+     */
+    private function handlePhpcbfInteractiveMode(File $file)
+    {
+        echo PHP_EOL . "\033[1m" . 'PHPCBF INTERACTIVE MODE - ' . basename($file->path) . "\033[0m" . PHP_EOL;
+
+        // Track user decisions to avoid asking the same questions repeatedly
+        $skippedViolations = [];
+        $ignoredSniffs = [];
+
+        // do {
+            // Reprocess the file to get current violations
+            // $file->reloadContent();
+            // $file->ruleset->populateTokenListeners();
+            // $file->process();
+
+            $errors = $file->getErrors();
+            $warnings = $file->getWarnings();
+            $totalViolations = $file->getErrorCount() + $file->getWarningCount();
+
+            if ($totalViolations === 0) {
+                echo 'No violations found in this file.' . PHP_EOL;
+                return;
+            }
+
+            echo "Found $totalViolations violation(s) in this file." . PHP_EOL;
+
+            // Process violations and track if any changes were made
+            $changesMade = false;
+
+            // Process errors first
+            $result = $this->processViolationsWithTracking($errors, 'ERROR', $file, $skippedViolations, $ignoredSniffs);
+            if ($result['changesMade']) {
+                $changesMade = true;
+            }
+            $skippedViolations = array_merge($skippedViolations, $result['newSkips']);
+            $ignoredSniffs = array_merge($ignoredSniffs, $result['newIgnores']);
+            // Then process warnings
+            $result = $this->processViolationsWithTracking($warnings, 'WARNING', $file, $skippedViolations, $ignoredSniffs);
+            if ($result['changesMade']) {
+                $changesMade = true;
+            }
+            $skippedViolations = array_merge($skippedViolations, $result['newSkips']);
+            $ignoredSniffs = array_merge($ignoredSniffs, $result['newIgnores']);
+
+            // If no changes were made in this iteration, break to avoid infinite loop
+            if (!$changesMade) {
+                echo 'No more actions taken. Processing complete.' . PHP_EOL;
+                // break;
+            }
+
+        // } while (true);
+    }
+
+
+    /**
+     * Process violations of a specific type with tracking to avoid repeated prompts.
+     *
+     * @param array                       $violations        The violations array.
+     * @param string                      $type              The type ('ERROR' or 'WARNING').
+     * @param \PHP_CodeSniffer\Files\File $file              The file being processed.
+     * @param array                       $skippedViolations Previously skipped violations.
+     * @param array                       $ignoredSniffs     Previously ignored sniffs.
+     *
+     * @return array Array with 'changesMade', 'newSkips', 'newIgnores' keys.
+     * @throws \PHP_CodeSniffer\Exceptions\DeepExitException
+     */
+    private function processViolationsWithTracking(array $violations, string $type, File $file, array $skippedViolations, array $ignoredSniffs)
+    {
+        $changesMade = false;
+        $newSkips = [];
+        $newIgnores = [];
+
+        foreach ($violations as $line => $lineViolations) {
+            foreach ($lineViolations as $column => $messages) {
+                foreach ($messages as $message) {
+                    // Add type and check if fixable
+                    $message['type'] = $type;
+                    $message['fixable'] = isset($message['fixable']) ? $message['fixable'] : false;
+                    $source = isset($message['source']) ? $message['source'] : 'Unknown.Source';
+
+                    // Create a unique key for this violation
+                    $violationKey = $source . ':' . $line . ':' . $column;
+
+                    // Skip if this violation was already skipped
+                    if (in_array($violationKey, $skippedViolations)) {
+                        continue;
+                    }
+
+                    // Skip if this sniff was ignored
+                    if (in_array($source, $ignoredSniffs)) {
+                        continue;
+                    }
+
+                    $result = $this->handleSingleViolation($message, $line, $column, $file);
+
+                    if ($result['action'] === 'fix' || $result['action'] === 'ignore_file' || $result['action'] === 'ignore_project' || $result['action'] === 'edit') {
+                        $changesMade = true;
+                    } elseif ($result['action'] === 'skip') {
+                        $newSkips[] = $violationKey;
+                    }
+
+                    if ($result['action'] === 'ignore_file' || $result['action'] === 'ignore_project') {
+                        $newIgnores[] = $source;
+                    }
+
+                    // If user quit, propagate the exception
+                    if ($result['action'] === 'quit') {
+                        throw new DeepExitException('', ExitCode::OKAY);
+                    }
+                }
+            }
+        }
+
+        return [
+            'changesMade' => $changesMade,
+            'newSkips' => $newSkips,
+            'newIgnores' => $newIgnores,
+        ];
+    }
+
+
+    /**
+     * Handle a single violation in PHPCBF interactive mode.
+     *
+     * @param array<string, string|int|bool> $message The violation message data.
+     * @param int                            $line    The line number.
+     * @param int                            $column  The column number.
+     * @param \PHP_CodeSniffer\Files\File    $file    The file being processed.
+     *
+     * @return array Array with 'action' key indicating what action was taken.
+     * @throws \PHP_CodeSniffer\Exceptions\DeepExitException
+     */
+    private function handleSingleViolation(array $message, int $line, int $column, File $file)
+    {
+        $type = isset($message['type']) ? $message['type'] : 'UNKNOWN';
+        $messageText = isset($message['message']) ? $message['message'] : 'Unknown violation';
+        $source = isset($message['source']) ? $message['source'] : 'Unknown.Source';
+        $fixable = isset($message['fixable']) ? $message['fixable'] : false;
+
+        echo "\033[33m" . strtoupper($type) . "\033[0m at line $line, column $column:" . PHP_EOL;
+        echo "  " . $messageText . PHP_EOL;
+        echo "  Sniff: " . $source . PHP_EOL;
+
+        // Check for interactive fix options
+        $violationKey = $line . ':' . $column . ':' . $source;
+        $interactiveFixOptions = $file->getInteractiveFixOptions($line, $column, $source);
+        $hasInteractiveFixes = !empty($interactiveFixOptions);
+
+
+        if ($hasInteractiveFixes) {
+            echo "  \033[36m(Interactive fixes available)\033[0m" . PHP_EOL;
+        } elseif ($fixable === true) {
+            echo "  \033[32m(Auto-fixable)\033[0m" . PHP_EOL;
+        } else {
+            echo "  \033[31m(Not auto-fixable)\033[0m" . PHP_EOL;
+        }
+
+        // If interactive fixes are available, present them first
+        if ($hasInteractiveFixes) {
+            echo PHP_EOL . "\033[1mInteractive Fix Options:\033[0m" . PHP_EOL;
+
+            foreach ($interactiveFixOptions as $index => $fixOption) {
+                $number = $index + 1;
+                echo "  [$number] {$fixOption['description']}" . PHP_EOL;
+                if (isset($fixOption['preview'])) {
+                    echo "      Preview: \033[36m{$fixOption['preview']}\033[0m" . PHP_EOL;
+                }
+            }
+            echo PHP_EOL;
+        }
+
+        echo 'Choose an action:' . PHP_EOL;
+        if ($hasInteractiveFixes) {
+            foreach ($interactiveFixOptions as $index => $fixOption) {
+                $number = $index + 1;
+                echo "  [$number] Apply: {$fixOption['description']}" . PHP_EOL;
+            }
+        } elseif ($fixable === true) {
+            echo '  [f] Fix automatically' . PHP_EOL;
+        }
+
+        echo '  [i] Ignore this sniff for this file' . PHP_EOL;
+        echo '  [a] Ignore this sniff for the entire project' . PHP_EOL;
+        echo '  [e] Edit the file manually' . PHP_EOL;
+        echo '  [s] Skip this violation' . PHP_EOL;
+        echo '  [q] Quit' . PHP_EOL;
+
+        if ($fixable === true && ! $hasInteractiveFixes) {
+            echo 'Action (default: auto-fix): ';
+        } else {
+            echo 'Action (default: skip): ';
+        }
+
+        while (true) {
+            $input = trim(fgets(STDIN));
+
+            // Handle empty input (Enter pressed) - default behavior
+            if ($input === '') {
+                if ($fixable === true) {
+                    if ($hasInteractiveFixes) {
+                        $file->skipInteractiveFix($line, $column, $source);
+                        echo 'Skipping...' . PHP_EOL;
+                        echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
+                        return ['action' => 'skip'];
+                    }
+
+                    echo 'Auto-fixing...' . PHP_EOL;
+                    $fixed = $file->fixer->fixFile();
+                    if ($fixed === true) {
+                        echo "\033[32mFixed!\033[0m" . PHP_EOL;
+                        echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
+                        return ['action' => 'fix'];
+                    } else {
+                        echo "\033[31mFailed to fix.\033[0m" . PHP_EOL;
+                        echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
+                        return ['action' => 'skip'];
+                    }
+                } else {
+                    echo 'Skipping...' . PHP_EOL;
+                    echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
+                    $file->skipInteractiveFix($line, $column, $source);
+                    return ['action' => 'skip'];
+                }
+            }
+
+            // Check if input is a number for interactive fix selection
+            if (is_numeric($input) && isset($interactiveFixOptions[$input - 1])) {
+                $file->setSelectedInteractiveFixOption($line, $column, $source, $input - 1);
+                $fixed = $file->fixer->fixFile();
+                if ($fixed === true) {
+                    echo "\033[32mFixed using interactive option!\033[0m" . PHP_EOL;
+                } else {
+                    echo "\033[31mFailed to fix using interactive option.\033[0m" . PHP_EOL;
+                }
+                return ['action' => 'fix'];
+            }
+
+
+            switch (strtolower($input)) {
+                case 'f':
+                    if ($fixable === true) {
+                        echo 'Attempting to fix...' . PHP_EOL;
+                        $fixed = $file->fixer->fixFile();
+                        if ($fixed === true) {
+                            echo "\033[32mFixed!\033[0m" . PHP_EOL;
+                            echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
+                            return ['action' => 'fix'];
+                        } else {
+                            echo "\033[31mFailed to fix.\033[0m" . PHP_EOL;
+                            echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
+                            return ['action' => 'skip'];
+                        }
+                    } else {
+                        echo "\033[31mInvalid option 'f' - this violation is not auto-fixable.\033[0m" . PHP_EOL;
+                        echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
+                        return ['action' => 'skip'];
+                    }
+
+                case 'i':
+                    $this->ignoreSniffInFile($source, $file);
+                    echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
+                    return ['action' => 'ignore_file'];
+
+                case 'a':
+                    $this->ignoreSniffInProject($source, $file);
+                    echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
+                    return ['action' => 'ignore_project'];
+
+                case 'e':
+                    $this->editFile($file, $line);
+                    echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
+                    return ['action' => 'edit'];
+
+                case 's':
+                    $file->skipInteractiveFix($line, $column, $source);
+                    echo 'Skipping...' . PHP_EOL;
+                    echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
+                    return ['action' => 'skip'];
+
+                case 'q':
+                    return ['action' => 'quit'];
+
+                default:
+                    echo 'Invalid option. Try again: ' ;
+            }
+        }
+    }
+
+
+    /**
+     * Add ignore comment for a sniff in the current file.
+     *
+     * @param string                      $sniffCode The sniff code to ignore.
+     * @param \PHP_CodeSniffer\Files\File $file      The file being processed.
+     *
+     * @return void
+     */
+    private function ignoreSniffInFile(string $sniffCode, File $file)
+    {
+        $content = file_get_contents($file->path);
+        $lines = explode($file->eolChar, $content);
+
+        // Add ignore comment at the top of the file after the opening PHP tag
+        $ignoreComment = '// phpcs:disable ' . $sniffCode . ' -- Interactive ignore';
+        if (isset($lines[0]) && strpos($lines[0], '<?php') === 0) {
+            array_splice($lines, 1, 0, $ignoreComment);
+        } else {
+            array_unshift($lines, $ignoreComment);
+        }
+
+        $newContent = implode($file->eolChar, $lines);
+        file_put_contents($file->path, $newContent);
+
+        echo "\033[32mAdded ignore for $sniffCode to this file.\033[0m" . PHP_EOL;
+
+        // Reload the file
+        $file->reloadContent();
+        $file->ruleset->populateTokenListeners();
+        $file->process();
+    }
+
+
+    /**
+     * Add ignore rule for a sniff in the project configuration.
+     *
+     * @param string                      $sniffCode The sniff code to ignore.
+     * @param \PHP_CodeSniffer\Files\File $file      The file being processed.
+     *
+     * @return void
+     */
+    private function ignoreSniffInProject(string $sniffCode, File $file)
+    {
+        $configFiles = ['phpcs.xml', 'phpcs.xml.dist', '.phpcs.xml', '.phpcs.xml.dist'];
+        $configFile = null;
+
+        // Find existing config file or create one
+        foreach ($configFiles as $configFileName) {
+            if (file_exists($configFileName) === true) {
+                $configFile = $configFileName;
+                break;
+            }
+        }
+
+        if ($configFile === null) {
+            $configFile = 'phpcs.xml';
+            $this->createBasicPhpcsXml($configFile);
+        }
+
+        $this->addExcludeToPhpcsXml($configFile, $sniffCode);
+        echo "\033[32mAdded exclude for $sniffCode to $configFile.\033[0m" . PHP_EOL;
+    }
+
+
+    /**
+     * Launch editor for manual file editing.
+     *
+     * @param \PHP_CodeSniffer\Files\File $file The file being processed.
+     * @param int                         $line The line number to jump to.
+     *
+     * @return void
+     */
+    private function editFile(File $file, int $line)
+    {
+        $file->fixer->enabled = true;
+        $fixedContent = $file->fixer->fixFile();
+        if ($fixedContent !== false) {
+            file_put_contents($file->path, $fixedContent);
+        } else {
+        }
+
+        // Check VISUAL first (preferred), then EDITOR
+        $editor = getenv('VISUAL');
+        if ($editor === false) {
+            $editor = getenv('EDITOR');
+        }
+
+        if ($editor === false) {
+            echo "\033[31mNo editor configured. Please set the VISUAL or EDITOR environment variable.\033[0m" . PHP_EOL;
+            echo "Examples:" . PHP_EOL;
+            echo "  export VISUAL=vim" . PHP_EOL;
+            echo "  export VISUAL=code" . PHP_EOL;
+            echo "  export EDITOR=nano" . PHP_EOL;
+            return;
+        }
+
+        $command = escapeshellcmd($editor) . ' ' . escapeshellarg($file->path);
+
+        // Add line number support for common editors
+        $editorName = basename($editor);
+        if (in_array($editorName, ['nano', 'vim', 'vi', 'nvim'], true)) {
+            $command .= ' +' . $line;
+        } elseif (in_array($editorName, ['emacs', 'code', 'subl'], true)) {
+            // Different syntax for other editors
+            if ($editorName === 'emacs') {
+                $command .= ' +' . $line;
+            } elseif ($editorName === 'code') {
+                $command .= ' --goto ' . $line;
+            } elseif ($editorName === 'subl') {
+                $command .= ':' . $line;
+            }
+        }
+
+        echo "Opening file with: $command" . PHP_EOL;
+        echo 'Press ENTER when you have finished editing...' . PHP_EOL;
+
+        // Execute editor
+        system($command);
+
+        // Wait for user confirmation
+        fgets(STDIN);
+
+        // Reload the file content
+        $file->reloadContent();
+        $file->ruleset->populateTokenListeners();
+        $file->process();
+
+        echo "\033[32mFile reloaded and reprocessed.\033[0m" . PHP_EOL;
+    }
+
+
+    /**
+     * Create a basic phpcs.xml configuration file.
+     *
+     * @param string $filename The config file to create.
+     *
+     * @return void
+     */
+    private function createBasicPhpcsXml(string $filename)
+    {
+        $content = '<?xml version="1.0"?>
+<ruleset name="Project Coding Standard">
+    <description>Coding standard for this project</description>
+
+    <!-- Include the whole PSR-12 standard -->
+    <rule ref="PSR12"/>
+
+    <!-- Files to check -->
+    <file>.</file>
+
+    <!-- Exclude patterns -->
+    <exclude-pattern>*/vendor/*</exclude-pattern>
+    <exclude-pattern>*/node_modules/*</exclude-pattern>
+</ruleset>
+';
+
+        file_put_contents($filename, $content);
+        echo "\033[32mCreated basic phpcs.xml configuration file.\033[0m" . PHP_EOL;
+    }
+
+
+    /**
+     * Add an exclude rule to phpcs.xml.
+     *
+     * @param string $configFile The config file to modify.
+     * @param string $sniffCode  The sniff code to exclude.
+     *
+     * @return void
+     */
+    private function addExcludeToPhpcsXml(string $configFile, string $sniffCode)
+    {
+        $xml = simplexml_load_file($configFile);
+        if ($xml === false) {
+            echo "\033[31mFailed to load $configFile.\033[0m" . PHP_EOL;
+            return;
+        }
+
+        // Check if exclude already exists
+        foreach ($xml->rule as $rule) {
+            if (isset($rule['ref']) && (string) $rule['ref'] === $sniffCode) {
+                foreach ($rule->exclude as $exclude) {
+                    if (isset($exclude['name']) && (string) $exclude['name'] === $sniffCode) {
+                        echo "\033[33mSniff $sniffCode is already excluded.\033[0m" . PHP_EOL;
+                        return;
+                    }
+                }
+            }
+        }
+
+        // Add new exclude rule
+        $rule = $xml->addChild('rule');
+        $rule->addAttribute('ref', $sniffCode);
+        $exclude = $rule->addChild('exclude');
+        $exclude->addAttribute('name', $sniffCode);
+
+        // Format and save
+        $dom = new \DOMDocument('1.0', 'UTF-8');
+        $dom->formatOutput = true;
+        $dom->loadXML($xml->asXML());
+        $dom->save($configFile);
     }
 }

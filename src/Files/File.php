@@ -129,6 +129,22 @@ class File
      */
     protected $metrics = [];
 
+    public $interactiveMode = false;
+
+    /**
+     * Interactive fix options for violations.
+     *
+     * @var array
+     */
+    protected $interactiveFixOptions = [];
+
+    /**
+     * Selected interactive fix options for violations.
+     *
+     * @var array
+     */
+    protected $selectedInteractiveFixOptions = [];
+
     /**
      * The metrics recorded for each token.
      *
@@ -684,6 +700,114 @@ class File
 
 
     /**
+     * Records an error with interactive fix options against a specific token in the file.
+     *
+     * @param string   $error    The error message.
+     * @param int|null $stackPtr The stack position where the error occurred.
+     * @param string   $code     A violation code unique to the sniff message.
+     * @param array    $data     Replacements for the error message.
+     * @param array    $fixOptions Array of fix options, each with 'description' and 'preview' keys.
+     * @param int      $severity The severity level for this error. A value of 0
+     *                           will be converted into the default severity level.
+     *
+     * @return int|bool The user's selection (1-based) or false if not in interactive mode.
+     */
+    public function addInteractivelyFixableError(
+        string $error,
+        ?int $stackPtr,
+        string $code,
+        array $data = [],
+        array $fixOptions = [],
+        int $severity = 0
+    ) {
+        if ($stackPtr === null) {
+            $line   = 1;
+            $column = 1;
+        } else {
+            $line   = $this->tokens[$stackPtr]['line'];
+            $column = $this->tokens[$stackPtr]['column'];
+        }
+
+        $violationKey = $this->getViolationKey( $line, $column, $code );
+        $this->interactiveFixOptions[$violationKey] = $fixOptions;
+
+        $selectedFix = $this->selectedInteractiveFixOptions[$violationKey] ?? null;
+        if ( $this->interactiveMode && false === $selectedFix ) {
+            // Don't report a skipped error anymore.
+            return false;
+        }
+        $recorded = $this->addError($error, $stackPtr, $code, $data, $severity, $this->interactiveMode);
+        if ($recorded === true && $this->fixer->enabled === true) {
+            return $selectedFix;
+        }
+
+        return false;
+    }
+
+    private function getViolationKey( int $line, int $column, string $code ) {
+        $parts = explode('.', $code);
+        if ($parts[0] !== $code) {
+            // The full message code has been passed in.
+            $sniffCode = $code;
+        } else {
+            $listenerCode = Common::getSniffCode($this->activeListener);
+            $sniffCode = $listenerCode . '.' . $code;
+        }
+
+        return $line . ':' . $column . ':' . $sniffCode;
+    }
+
+
+    /**
+     * Get interactive fix options for a specific violation.
+     *
+     * @param int    $line   The line number.
+     * @param int    $column The column number.
+     * @param string $code   The violation code.
+     *
+     * @return array Array of fix options or empty array if none available.
+     */
+    public function getInteractiveFixOptions(int $line, int $column, string $code)
+    {
+        $violationKey = $this->getViolationKey( $line, $column, $code );
+        return $this->interactiveFixOptions[$violationKey] ?? [];
+    }
+
+
+    /**
+     * Set the selected interactive fix option for a specific violation.
+     *
+     * @param int    $line   The line number of the violation.
+     * @param int    $column The column number of the violation.
+     * @param string $code   The violation code.
+     * @param int  $selectedFix The selected fix option.
+     *
+     * @return void
+     */
+    public function setSelectedInteractiveFixOption(int $line, int $column, string $code, int $selectedFix)
+    {
+
+        $violationKey = $this->getViolationKey( $line, $column, $code );
+        $this->selectedInteractiveFixOptions[$violationKey] = $selectedFix;
+    }
+
+    /**
+     * Skip the selected interactive fix option for a specific violation.
+     *
+     * @param int    $line   The line number of the violation.
+     * @param int    $column The column number of the violation.
+     * @param string $code   The violation code.
+     *
+     * @return void
+     */
+    public function skipInteractiveFix(int $line, int $column, string $code)
+    {
+
+        $violationKey = $line . ':' . $column . ':' . $code;
+        $this->selectedInteractiveFixOptions[$violationKey] = false;
+    }
+
+    /**
      * Records a warning against a specific token in the file.
      *
      * @param string   $warning  The error message.
@@ -850,6 +974,12 @@ class File
         // Check if this line is ignoring all message codes.
         if (isset($this->tokenizer->ignoredLines[$line]) === true && $this->tokenizer->ignoredLines[$line]->ignoresEverything() === true) {
             return false;
+        }
+        if ( $this->interactiveMode ) {
+            $violationKey = $this->getViolationKey( $line, $column, $code );
+            if ( isset( $this->selectedInteractiveFixOptions[$violationKey] ) && false === $this->selectedInteractiveFixOptions[$violationKey] ) {
+                return false;
+            }
         }
 
         // Work out which sniff generated the message.

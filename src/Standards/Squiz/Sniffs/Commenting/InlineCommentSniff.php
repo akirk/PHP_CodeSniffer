@@ -248,7 +248,29 @@ class InlineCommentSniff implements Sniff
 
                 $ender = trim($ender, ' ,');
                 $data  = [$ender];
-                $phpcsFile->addError($error, $lastCommentToken, 'InvalidEndChar', $data);
+
+                // Get the previous and next line for context:
+                $prevLine = false;//$phpcsFile->findPrevious(T_WHITESPACE, ($stackPtr - 1), null, true);
+                if ($prevLine !== false) {
+                    $prevLine = rtrim($tokens[$prevLine]['content']);
+                } else {
+                    $prevLine = '';
+                }
+
+                $nextLine = false;//$phpcsFile->findNext(T_WHITESPACE, ($lastCommentToken + 1), null, true);
+
+                if ($nextLine !== false) {
+                    $nextLine = rtrim($tokens[$nextLine]['content']);
+                } else {
+                    $nextLine = '';
+                }
+
+                $fixOptions = $this->proposeInvalidEndCharFix($commentText, $prevLine, $nextLine);
+                $selection = $phpcsFile->addInteractivelyFixableError($error, $lastCommentToken, 'InvalidEndChar', $data, $fixOptions);
+                if (is_numeric( $selection ) && isset($fixOptions[$selection])) {
+                    $selectedFix = $fixOptions[$selection];
+                    $phpcsFile->fixer->replaceToken($lastCommentToken, $selectedFix['newContent']);
+                }
             }
         }
 
@@ -310,4 +332,46 @@ class InlineCommentSniff implements Sniff
 
         return ($lastCommentToken + 1);
     }
+
+
+    /**
+     * Propose fix options for invalid end character violations.
+     *
+     * @param string $commentText The comment text without // prefix.
+     * @param string $prevLine The previous line for context.
+     * @param string $nextLine The next line for context.
+     *
+     * @return array Array of fix options with description and preview.
+     */
+    private function proposeInvalidEndCharFix(string $commentText, string $prevLine, string $nextLine )
+    {
+        $options = [
+            [
+                'description' => 'Add period (.)',
+                'preview' => '// ' . rtrim($commentText) . '.',
+                'newContent' => '// ' . rtrim($commentText) . '.' . PHP_EOL,
+            ],
+            [
+                'description' => 'Add exclamation mark (!)',
+                'preview' => '// ' . rtrim($commentText) . '!',
+                'newContent' => '// ' . rtrim($commentText) . '!' . PHP_EOL,
+            ],
+            [
+                'description' => 'Add question mark (?)',
+                'preview' => '// ' . rtrim($commentText) . '?',
+                'newContent' => '// ' . rtrim($commentText) . '?' . PHP_EOL,
+            ],
+            [
+                'description' => 'Remove comment',
+                'preview' => '',
+                'newContent' => '',
+            ],
+        ];
+
+        foreach ($options as $key => $option) {
+            $options[$key]['preview'] = PHP_EOL . trim( $prevLine . PHP_EOL . $option['preview'] . $nextLine );
+        }
+        return $options;
+    }
+
 }
