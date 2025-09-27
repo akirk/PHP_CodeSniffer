@@ -729,6 +729,9 @@ class File
         }
 
         $violationKey = $this->getViolationKey( $line, $column, $code );
+        foreach ( array_keys( $fixOptions ) as $k ) {
+            $fixOptions[$k]['current'] = trim( $this->tokens[$stackPtr]['content'] );
+        }
         $this->interactiveFixOptions[$violationKey] = $fixOptions;
 
         $selectedFix = $this->selectedInteractiveFixOptions[$violationKey] ?? null;

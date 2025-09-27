@@ -1002,9 +1002,13 @@ class Runner
             foreach ($interactiveFixOptions as $index => $fixOption) {
                 $number = $index + 1;
                 echo "  [$number] {$fixOption['description']}" . PHP_EOL;
+                $current = $fixOption['current'] ?? null;
+                if ($current) {
+                    echo "      Current: \033[31m{$current}\033[0m" . PHP_EOL;
+                }
                 $preview = $fixOption['preview'] ?? $fixOption['newContent'] ?? null;
-                if ( $preview ) {
-                    echo "      Preview: \033[36m{$preview}\033[0m" . PHP_EOL;
+                if ($preview) {
+                    echo "      Preview: \033[32m{$preview}\033[0m" . PHP_EOL;
                 }
             }
             echo PHP_EOL;

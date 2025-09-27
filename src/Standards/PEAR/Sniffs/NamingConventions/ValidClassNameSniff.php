@@ -48,7 +48,7 @@ class ValidClassNameSniff implements Sniff
 
         $className = $phpcsFile->findNext(T_STRING, $stackPtr);
         $name      = trim($tokens[$className]['content']);
-        $errorData = [ucfirst($tokens[$stackPtr]['content'])];
+        $errorData = [ucfirst($tokens[$className]['content'])];
 
         // Make sure the first letter is a capital.
         if (preg_match('|^[A-Z]|', $name) === 0) {
@@ -62,8 +62,8 @@ class ValidClassNameSniff implements Sniff
             $fixOptions = [
                 [
                     'description' => "Suggestion",
-                    'newContent' => ucfirst( $name ),
-                    'preview' => $preview . ucfirst( $name ),
+                    'newContent' => $errorData[0],
+                    'preview' => $preview . $errorData[0],
                 ],
             ];
             $selection = $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'StartWithCapital', $errorData, $fixOptions);
