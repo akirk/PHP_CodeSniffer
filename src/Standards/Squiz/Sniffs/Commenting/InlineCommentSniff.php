@@ -249,21 +249,24 @@ class InlineCommentSniff implements Sniff
                 $ender = trim($ender, ' ,');
                 $data  = [$ender];
 
-                $prevLine = $phpcsFile->findPrevious(T_WHITESPACE, ($lastCommentToken - 1), null, true, PHP_EOL);
-                if ($prevLine !== false) {
-                    $prevLine = rtrim($tokens[$prevLine]['content']);
-                } else {
-                    $prevLine = '';
-                }
-
-                $nextLine = $phpcsFile->findNext(T_WHITESPACE, ($lastCommentToken + 1), null, true, PHP_EOL);
-                if ($nextLine !== false) {
-                    $nextLine = rtrim($tokens[$nextLine]['content']);
-                } else {
-                    $nextLine = '';
-                }
-
-                $fixOptions = $this->proposeInvalidEndCharFix($commentText, $prevLine, $nextLine);
+                $fixOptions = [
+                    [
+                        'description' => 'Add period (.)',
+                        'newContent' => '// ' . rtrim($commentText) . '.' . PHP_EOL,
+                    ],
+                    [
+                        'description' => 'Add exclamation mark (!)',
+                        'newContent' => '// ' . rtrim($commentText) . '!' . PHP_EOL,
+                    ],
+                    [
+                        'description' => 'Add question mark (?)',
+                        'newContent' => '// ' . rtrim($commentText) . '?' . PHP_EOL,
+                    ],
+                    [
+                        'description' => 'Remove comment',
+                        'newContent' => '',
+                    ],
+                ];
                 $selection = $phpcsFile->addInteractivelyFixableError($error, $lastCommentToken, 'InvalidEndChar', $data, $fixOptions);
                 if (is_numeric( $selection ) && isset($fixOptions[$selection])) {
                     $selectedFix = $fixOptions[$selection];
@@ -330,42 +333,4 @@ class InlineCommentSniff implements Sniff
 
         return ($lastCommentToken + 1);
     }
-
-
-    /**
-     * Propose fix options for invalid end character violations.
-     *
-     * @param string $commentText The comment text without // prefix.
-     * @param string $prevLine The previous line for context.
-     * @param string $nextLine The next line for context.
-     *
-     * @return array Array of fix options with description and preview.
-     */
-    private function proposeInvalidEndCharFix(string $commentText, string $prevLine, string $nextLine )
-    {
-        $options = [
-            [
-                'description' => 'Add period (.)',
-                'newContent' => '// ' . rtrim($commentText) . '.' . PHP_EOL,
-            ],
-            [
-                'description' => 'Add exclamation mark (!)',
-                'newContent' => '// ' . rtrim($commentText) . '!' . PHP_EOL,
-            ],
-            [
-                'description' => 'Add question mark (?)',
-                'newContent' => '// ' . rtrim($commentText) . '?' . PHP_EOL,
-            ],
-            [
-                'description' => 'Remove comment',
-                'newContent' => '',
-            ],
-        ];
-
-        foreach ($options as $key => $option) {
-            $options[$key]['preview'] = PHP_EOL . trim( $prevLine . PHP_EOL . $option['newContent'] . $nextLine );
-        }
-        return $options;
-    }
-
 }

@@ -934,121 +934,22 @@ class Runner
     {
         echo PHP_EOL . "\033[1m" . 'PHPCBF INTERACTIVE MODE - ' . basename($file->path) . "\033[0m" . PHP_EOL;
 
-        // Track user decisions to avoid asking the same questions repeatedly
-        $skippedViolations = [];
-        $ignoredSniffs = [];
+        foreach ( array( 'errors' => $file->getErrors(), 'warnings' => $file->getWarnings()) as $type => $violations ) {
+            foreach ( $violations as $line => $lineViolations) {
+                foreach ($lineViolations as $column => $messages) {
+                    foreach ($messages as $message) {
+                        $message['type'] = $type;
+                        $message['fixable'] = isset($message['fixable']) ? $message['fixable'] : false;
 
-        // do {
-            // Reprocess the file to get current violations
-            // $file->reloadContent();
-            // $file->ruleset->populateTokenListeners();
-            // $file->process();
-
-            $errors = $file->getErrors();
-            $warnings = $file->getWarnings();
-            $totalViolations = $file->getErrorCount() + $file->getWarningCount();
-
-            if ($totalViolations === 0) {
-                echo 'No violations found in this file.' . PHP_EOL;
-                return;
-            }
-
-            echo "Found $totalViolations violation(s) in this file." . PHP_EOL;
-
-            // Process violations and track if any changes were made
-            $changesMade = false;
-
-            // Process errors first
-            $result = $this->processViolationsWithTracking($errors, 'ERROR', $file, $skippedViolations, $ignoredSniffs);
-            if ($result['changesMade']) {
-                $changesMade = true;
-            }
-            $skippedViolations = array_merge($skippedViolations, $result['newSkips']);
-            $ignoredSniffs = array_merge($ignoredSniffs, $result['newIgnores']);
-            // Then process warnings
-            $result = $this->processViolationsWithTracking($warnings, 'WARNING', $file, $skippedViolations, $ignoredSniffs);
-            if ($result['changesMade']) {
-                $changesMade = true;
-            }
-            $skippedViolations = array_merge($skippedViolations, $result['newSkips']);
-            $ignoredSniffs = array_merge($ignoredSniffs, $result['newIgnores']);
-
-            // If no changes were made in this iteration, break to avoid infinite loop
-            if (!$changesMade) {
-                echo 'No more actions taken. Processing complete.' . PHP_EOL;
-                // break;
-            }
-
-        // } while (true);
-    }
-
-
-    /**
-     * Process violations of a specific type with tracking to avoid repeated prompts.
-     *
-     * @param array                       $violations        The violations array.
-     * @param string                      $type              The type ('ERROR' or 'WARNING').
-     * @param \PHP_CodeSniffer\Files\File $file              The file being processed.
-     * @param array                       $skippedViolations Previously skipped violations.
-     * @param array                       $ignoredSniffs     Previously ignored sniffs.
-     *
-     * @return array Array with 'changesMade', 'newSkips', 'newIgnores' keys.
-     * @throws \PHP_CodeSniffer\Exceptions\DeepExitException
-     */
-    private function processViolationsWithTracking(array $violations, string $type, File $file, array $skippedViolations, array $ignoredSniffs)
-    {
-        $changesMade = false;
-        $newSkips = [];
-        $newIgnores = [];
-
-        foreach ($violations as $line => $lineViolations) {
-            foreach ($lineViolations as $column => $messages) {
-                foreach ($messages as $message) {
-                    // Add type and check if fixable
-                    $message['type'] = $type;
-                    $message['fixable'] = isset($message['fixable']) ? $message['fixable'] : false;
-                    $source = isset($message['source']) ? $message['source'] : 'Unknown.Source';
-
-                    // Create a unique key for this violation
-                    $violationKey = $source . ':' . $line . ':' . $column;
-
-                    // Skip if this violation was already skipped
-                    if (in_array($violationKey, $skippedViolations)) {
-                        continue;
-                    }
-
-                    // Skip if this sniff was ignored
-                    if (in_array($source, $ignoredSniffs)) {
-                        continue;
-                    }
-
-                    $result = $this->handleSingleViolation($message, $line, $column, $file);
-
-                    if ($result['action'] === 'fix' || $result['action'] === 'ignore_file' || $result['action'] === 'ignore_project' || $result['action'] === 'edit') {
-                        $changesMade = true;
-                    } elseif ($result['action'] === 'skip') {
-                        $newSkips[] = $violationKey;
-                    }
-
-                    if ($result['action'] === 'ignore_file' || $result['action'] === 'ignore_project') {
-                        $newIgnores[] = $source;
-                    }
-
-                    // If user quit, propagate the exception
-                    if ($result['action'] === 'quit') {
-                        throw new DeepExitException('', ExitCode::OKAY);
+                        $ret = $this->handleSingleViolation($message, $line, $column, $file);
+                        if ( 'quit' === $ret['action'] ?? '' ) {
+                            return;
+                        }
                     }
                 }
             }
         }
-
-        return [
-            'changesMade' => $changesMade,
-            'newSkips' => $newSkips,
-            'newIgnores' => $newIgnores,
-        ];
     }
-
 
     /**
      * Handle a single violation in PHPCBF interactive mode.
@@ -1068,14 +969,22 @@ class Runner
         $source = isset($message['source']) ? $message['source'] : 'Unknown.Source';
         $fixable = isset($message['fixable']) ? $message['fixable'] : false;
 
+        $input = false;
+
+        $interactiveFixOptions = $file->getInteractiveFixOptions($line, $column, $source);
+        $hasInteractiveFixes = !empty($interactiveFixOptions);
+
+        if ( $this->config->autoFirst ) {
+            if ( $hasInteractiveFixes ) {
+                $input = '1';
+            } else {
+                $input = '';
+            }
+        }
+
         echo "\033[33m" . strtoupper($type) . "\033[0m at line $line, column $column:" . PHP_EOL;
         echo "  " . $messageText . PHP_EOL;
         echo "  Sniff: " . $source . PHP_EOL;
-
-        // Check for interactive fix options
-        $violationKey = $line . ':' . $column . ':' . $source;
-        $interactiveFixOptions = $file->getInteractiveFixOptions($line, $column, $source);
-        $hasInteractiveFixes = !empty($interactiveFixOptions);
 
 
         if ($hasInteractiveFixes) {
@@ -1101,30 +1010,40 @@ class Runner
             echo PHP_EOL;
         }
 
-        echo 'Choose an action:' . PHP_EOL;
-        if ($hasInteractiveFixes) {
-            foreach ($interactiveFixOptions as $index => $fixOption) {
-                $number = $index + 1;
-                echo "  [$number] Apply: {$fixOption['description']}" . PHP_EOL;
+        if ( ! $input ) {
+            echo 'Choose an action:' . PHP_EOL;
+            if ($hasInteractiveFixes) {
+                foreach ($interactiveFixOptions as $index => $fixOption) {
+                    $number = $index + 1;
+                    echo "  [$number] Apply: {$fixOption['description']}" . PHP_EOL;
+                }
+            } elseif ($fixable === true) {
+                echo '  [f] Fix automatically' . PHP_EOL;
             }
-        } elseif ($fixable === true) {
-            echo '  [f] Fix automatically' . PHP_EOL;
-        }
 
-        echo '  [i] Ignore this sniff for this file' . PHP_EOL;
-        echo '  [a] Ignore this sniff for the entire project' . PHP_EOL;
-        echo '  [e] Edit the file manually' . PHP_EOL;
-        echo '  [s] Skip this violation' . PHP_EOL;
-        echo '  [q] Quit' . PHP_EOL;
+            echo '  [i] Ignore this sniff for this file' . PHP_EOL;
+            echo '  [a] Ignore this sniff for the entire project' . PHP_EOL;
+            echo '  [e] Edit the file manually' . PHP_EOL;
+            echo '  [s] Skip this violation' . PHP_EOL;
+            echo '  [q] Quit' . PHP_EOL;
 
-        if ($fixable === true && ! $hasInteractiveFixes) {
-            echo 'Action (default: auto-fix): ';
-        } else {
-            echo 'Action (default: skip): ';
+            if ($fixable === true && ! $hasInteractiveFixes) {
+                echo 'Action (default: auto-fix): ';
+            } else {
+                echo 'Action (default: skip): ';
+            }
         }
 
         while (true) {
-            $input = trim(fgets(STDIN));
+            if ( $this->config->autoFirst ) {
+                if ( $hasInteractiveFixes ) {
+                    $input = '1';
+                } else {
+                    $input = '';
+                }
+            } else {
+                $input = trim(fgets(STDIN));
+            }
 
             // Handle empty input (Enter pressed) - default behavior
             if ($input === '') {
@@ -1157,13 +1076,15 @@ class Runner
 
             // Check if input is a number for interactive fix selection
             if (is_numeric($input) && isset($interactiveFixOptions[$input - 1])) {
-                $file->setSelectedInteractiveFixOption($line, $column, $source, $input - 1);
+                echo 'Fixing with option ', $input, '...' . PHP_EOL;
+               $file->setSelectedInteractiveFixOption($line, $column, $source, $input - 1);
                 $fixed = $file->fixer->fixFile();
                 if ($fixed === true) {
-                    echo "\033[32mFixed using interactive option!\033[0m" . PHP_EOL;
+                    echo "\033[32mFixed!\033[0m" . PHP_EOL;
                 } else {
-                    echo "\033[31mFailed to fix using interactive option.\033[0m" . PHP_EOL;
+                    echo "\033[31mFailed to fix.\033[0m" . PHP_EOL;
                 }
+                echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
                 return ['action' => 'fix'];
             }
 

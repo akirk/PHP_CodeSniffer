@@ -164,6 +164,7 @@ class Config
         'standards'       => null,
         'verbosity'       => null,
         'interactive'     => null,
+        'autoFirst'      => null,
         'parallel'        => null,
         'cache'           => null,
         'cacheFile'       => null,
@@ -697,6 +698,9 @@ class Config
             case 'a' :
                 $this->interactive = true;
                 $this->overriddenDefaults['interactive'] = true;
+                break;
+            case '1' :
+                $this->autoFirst = true;
                 break;
             case 'e':
                 $this->explain = true;
