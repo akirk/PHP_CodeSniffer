@@ -238,10 +238,7 @@ class InlineCommentSniff implements Sniff
                     'newContent' => '// ' . ucfirst( $commentText ) . PHP_EOL,
                 ],
             ];
-            $selection = $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'NotCapital', [], $fixOptions);
-            if (is_numeric( $selection ) && isset($fixOptions[$selection])) {
-                $phpcsFile->fixer->replaceToken($lastCommentToken, $fixOptions[$selection]['newContent']);
-            }
+            $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'NotCapital', [], $fixOptions);
         }
 
         // Only check the end of comment character if the start of the comment
@@ -276,10 +273,7 @@ class InlineCommentSniff implements Sniff
                         'newContent' => '',
                     ],
                 ];
-                $selection = $phpcsFile->addInteractivelyFixableError($error, $lastCommentToken, 'InvalidEndChar', $data, $fixOptions);
-                if (is_numeric( $selection ) && isset($fixOptions[$selection])) {
-                    $phpcsFile->fixer->replaceToken($lastCommentToken, $fixOptions[$selection]['newContent']);
-                }
+                $phpcsFile->addInteractivelyFixableError($error, $lastCommentToken, 'InvalidEndChar', $data, $fixOptions);
             }
         }
 

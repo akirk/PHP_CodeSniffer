@@ -356,6 +356,111 @@ class File
 
 
     /**
+     * Create a temporary clone of this file for testing fixes.
+     *
+     * @return \PHP_CodeSniffer\Files\DummyFile A cloned file with the same content and state.
+     */
+    public function createTempClone()
+    {
+        $clone = new DummyFile($this->content, $this->ruleset, $this->config);
+
+        // Copy essential state
+        $clone->path = $this->path . '_temp_' . uniqid();
+        $clone->eolChar = $this->eolChar;
+        $clone->interactiveMode = false; // Disable interactive mode for clones
+
+        // Copy the tokens directly instead of processing again
+        $clone->tokens = $this->tokens;
+        $clone->numTokens = $this->numTokens;
+        $clone->tokenizer = $this->tokenizer;
+        $clone->fixer = new \PHP_CodeSniffer\Fixer();
+        $clone->fixer->startFile($clone);
+
+        return $clone;
+    }
+
+
+    /**
+     * Generate a real diff between original and modified content.
+     *
+     * @param string $originalContent The original file content.
+     * @param string $modifiedContent The modified file content.
+     * @param int    $focusLine       The line number to focus the diff around.
+     * @param int    $contextLines    Number of context lines to show.
+     *
+     * @return array Array with diff information for display.
+     */
+    private function generateRealDiff(string $originalContent, string $modifiedContent, int $focusLine, int $contextLines = 2)
+    {
+        $originalLines = explode("\n", $originalContent);
+        $modifiedLines = explode("\n", $modifiedContent);
+
+        // Calculate context range around the focus line
+        $startLine = max(1, $focusLine - $contextLines);
+        $endLine = min(count($originalLines), $focusLine + $contextLines);
+
+        $diff = [];
+        for ($i = $startLine; $i <= $endLine; $i++) {
+            $originalLine = $originalLines[$i - 1] ?? '';
+            $modifiedLine = $modifiedLines[$i - 1] ?? '';
+
+            if ($originalLine !== $modifiedLine) {
+                // Lines are different
+                if ($originalLine !== '') {
+                    $diff[] = [
+                        'type' => 'removed',
+                        'lineNum' => $i,
+                        'content' => $originalLine
+                    ];
+                }
+                if ($modifiedLine !== '') {
+                    $diff[] = [
+                        'type' => 'added',
+                        'lineNum' => $i,
+                        'content' => $modifiedLine
+                    ];
+                }
+            } else {
+                // Context line
+                $diff[] = [
+                    'type' => 'context',
+                    'lineNum' => $i,
+                    'content' => $originalLine
+                ];
+            }
+        }
+
+        // Post-process: convert unchanged lines that appear to shift into context
+        for ($i = 1; $i < count($diff); $i++) {
+            $current = $diff[$i];
+            $previous = $diff[$i - 1];
+
+            if (($current['type'] === 'added' && $previous['type'] === 'removed') ||
+                ($current['type'] === 'removed' && $previous['type'] === 'added')) {
+
+                if (trim($current['content']) === trim($previous['content'])) {
+                    // This is just a line that shifted position, treat as context and remove the duplicate
+                    $diff[$i]['type'] = 'context';
+                    unset($diff[$i - 1]);
+                }
+            }
+        }
+
+        $diff = array_values($diff);
+
+        // Remove unnecessary added line at the end if the previous line is context
+        $lastIndex = count($diff) - 1;
+        if ($lastIndex > 0 &&
+            $diff[$lastIndex]['type'] === 'added' &&
+            $diff[$lastIndex - 1]['type'] === 'context') {
+            unset($diff[$lastIndex]);
+        }
+
+        return array_values($diff);
+    }
+
+
+    /**
      * Reloads the content of the file.
      *
      * By default, we have no idea where our content comes from,
@@ -731,13 +836,14 @@ class File
     /**
      * Records an error with interactive fix options against a specific token in the file.
      *
-     * @param string   $error    The error message.
-     * @param int|null $stackPtr The stack position where the error occurred.
-     * @param string   $code     A violation code unique to the sniff message.
-     * @param array    $data     Replacements for the error message.
-     * @param array    $fixOptions Array of fix options, each with 'description' and 'preview' keys.
-     * @param int      $severity The severity level for this error. A value of 0
-     *                           will be converted into the default severity level.
+     * @param string        $error      The error message.
+     * @param int|null      $stackPtr   The stack position where the error occurred.
+     * @param string        $code       A violation code unique to the sniff message.
+     * @param array         $data       Replacements for the error message.
+     * @param array         $fixOptions Array of fix options, each with 'description' and 'newContent' keys.
+     * @param int           $severity   The severity level for this error. A value of 0
+     *                                  will be converted into the default severity level.
+     * @param callable|null $applyFix   Optional callback to apply fixes. If null, uses default token replacement.
      *
      * @return int|bool The user's selection (1-based) or false if not in interactive mode.
      */
@@ -747,7 +853,8 @@ class File
         string $code,
         array $data = [],
         array $fixOptions = [],
-        int $severity = 0
+        int $severity = 0,
+        ?callable $applyFix = null
     ) {
         if ($stackPtr === null) {
             $line   = 1;
@@ -758,11 +865,31 @@ class File
         }
 
         $violationKey = $this->getViolationKey( $line, $column, $code );
-        foreach ( array_keys( $fixOptions ) as $k ) {
-            if ( ! isset( $fixOptions[$k]['current'] ) ) {
-                $fixOptions[$k]['current'] = trim( $this->tokens[$stackPtr]['content'] );
-            }
+
+        // Create default apply fix callback if none provided
+        if ($applyFix === null) {
+            $applyFix = function(DummyFile $file, int $tokenPtr, string $newContent) {
+                $file->fixer->replaceToken($tokenPtr, $newContent);
+            };
         }
+
+        // Generate real diffs for each fix option
+        foreach ( array_keys( $fixOptions ) as $k ) {
+            // Create temporary clone and apply the fix
+            $tempFile = $this->createTempClone();
+            $newContent = $fixOptions[$k]['newContent'] ?? '';
+
+            // Apply the fix to the temporary file
+            $applyFix($tempFile, $stackPtr, $newContent);
+
+            // Get the modified content by applying all the fixer's changes
+            $modifiedContent = $tempFile->fixer->getContents();
+
+            // Generate diff between original and modified content
+            $fixOptions[$k]['realDiff'] = $this->generateRealDiff($this->content, $modifiedContent, $line);
+            $fixOptions[$k]['current'] = trim( $this->tokens[$stackPtr]['content'] );
+        }
+
         $this->interactiveFixOptions[$violationKey] = $fixOptions;
 
         $selectedFix = $this->selectedInteractiveFixOptions[$violationKey] ?? null;

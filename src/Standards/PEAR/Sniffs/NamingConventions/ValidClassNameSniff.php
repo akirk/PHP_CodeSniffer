@@ -63,13 +63,9 @@ class ValidClassNameSniff implements Sniff
                 [
                     'description' => "Suggestion",
                     'newContent' => $errorData[0],
-                    'current' => $preview . $name,
                 ],
             ];
-            $selection = $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'StartWithCapital', $errorData, $fixOptions);
-            if (is_numeric( $selection ) && isset($fixOptions[$selection])) {
-                $phpcsFile->fixer->replaceToken($className, $fixOptions[$selection]['newContent']);
-            }
+            $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'StartWithCapital', $errorData, $fixOptions);
 
         }
 
@@ -115,13 +111,9 @@ class ValidClassNameSniff implements Sniff
                     [
                         'description' => "Suggestion",
                         'newContent' => $newName,
-                        'current' => $name,
                     ],
                 ];
-                $selection = $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'Invalid', $data, $fixOptions);
-                if (is_numeric( $selection ) && isset($fixOptions[$selection])) {
-                    $phpcsFile->fixer->replaceToken($className, $fixOptions[$selection]['newContent']);
-                }
+                $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'Invalid', $data, $fixOptions);
             }
         }
     }
