@@ -832,6 +832,10 @@ class Config
                 $this->annotations = false;
                 $this->overriddenDefaults['annotations'] = true;
                 break;
+            case 'interactive':
+                $this->interactive = true;
+                $this->overriddenDefaults['interactive'] = true;
+                break;
             case 'config-set':
                 if (isset($this->cliArgs[($pos + 1)]) === false
                     || isset($this->cliArgs[($pos + 2)]) === false

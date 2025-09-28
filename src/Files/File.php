@@ -327,6 +327,35 @@ class File
 
 
     /**
+     * Get lines of context around a specific line number.
+     *
+     * @param int $lineNumber    The target line number.
+     * @param int $contextLines  Number of context lines before and after.
+     *
+     * @return array Array with keys: 'lines' (array of line content), 'startLine' (first line number), 'endLine' (last line number).
+     */
+    public function getLineContext(int $lineNumber, int $contextLines = 2)
+    {
+        $lines = explode("\n", $this->content);
+        $totalLines = count($lines);
+
+        $startLine = max(1, $lineNumber - $contextLines);
+        $endLine = min($totalLines, $lineNumber + $contextLines);
+
+        $contextLines = [];
+        for ($i = $startLine; $i <= $endLine; $i++) {
+            $contextLines[$i] = $lines[$i - 1] ?? '';
+        }
+
+        return [
+            'lines' => $contextLines,
+            'startLine' => $startLine,
+            'endLine' => $endLine,
+        ];
+    }
+
+
+    /**
      * Reloads the content of the file.
      *
      * By default, we have no idea where our content comes from,

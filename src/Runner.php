@@ -952,6 +952,75 @@ class Runner
     }
 
     /**
+     * Generate a contextual diff display for a fix option.
+     *
+     * @param \PHP_CodeSniffer\Files\File $file The file being processed.
+     * @param int                         $line The line number of the violation.
+     * @param string                      $current The current code.
+     * @param string                      $preview The preview/new code.
+     * @param int                         $contextLines Number of context lines to show.
+     *
+     * @return string The formatted diff output.
+     */
+    private function generateDiffDisplay(File $file, int $line, string $current, string $preview, int $contextLines = 2)
+    {
+
+        $context = $file->getLineContext($line, $contextLines);
+        $output = '';
+        $skipNext = false;
+
+        foreach ($context['lines'] as $lineNum => $lineContent) {
+            if ($skipNext && $lineNum === $line + 1) {
+                $skipNext = false;
+                continue;
+            }
+
+            $lineNumber = str_pad((string)$lineNum, 3, ' ', STR_PAD_LEFT);
+
+            if ($lineNum === $line) {
+                $currentTrimmed = trim($current);
+                $previewTrimmed = trim($preview);
+
+
+                // Check for removal case first
+                if ($currentTrimmed !== '' && $previewTrimmed === '') {
+                    // Removal case - show the removal and what moves up
+                    $output .= "      \033[31m{$lineNumber}- " . rtrim($lineContent) . "\033[0m" . PHP_EOL;
+
+                    // Show what content moves up to this line number (without + prefix)
+                    $nextLineContent = $context['lines'][$lineNum + 1] ?? '';
+                    if (trim($nextLineContent) !== '') {
+                        $output .= "      \033[90m{$lineNumber}  " . rtrim($nextLineContent) . "\033[0m" . PHP_EOL;
+                        $skipNext = true; // Skip showing this line again as context
+                    }
+                } elseif ($currentTrimmed !== '' && $previewTrimmed !== $currentTrimmed) {
+                    // Try to replace the current content with preview in the line
+                    if (strpos($lineContent, $currentTrimmed) !== false) {
+                        // Show the current line
+                        $output .= "      \033[31m{$lineNumber}- " . rtrim($lineContent) . "\033[0m" . PHP_EOL;
+                        // Show the line with replacement
+                        $newLineContent = str_replace($currentTrimmed, $previewTrimmed, $lineContent);
+                        $output .= "      \033[32m{$lineNumber}+ " . rtrim($newLineContent) . "\033[0m" . PHP_EOL;
+                    } else {
+                        // Fallback: show context and indicate the change
+                        $output .= "      \033[90m{$lineNumber}  " . rtrim($lineContent) . "\033[0m" . PHP_EOL;
+                        $output .= "      \033[31m     - {$currentTrimmed}\033[0m" . PHP_EOL;
+                        $output .= "      \033[32m     + {$previewTrimmed}\033[0m" . PHP_EOL;
+                    }
+                } else {
+                    // No change or other edge case
+                    $output .= "      \033[90m{$lineNumber}  " . rtrim($lineContent) . "\033[0m" . PHP_EOL;
+                }
+            } else {
+                // Show context lines in normal color
+                $output .= "      \033[90m{$lineNumber}  " . rtrim($lineContent) . "\033[0m" . PHP_EOL;
+            }
+        }
+
+        return $output;
+    }
+
+    /**
      * Handle a single violation in PHPCBF interactive mode.
      *
      * @param array<string, string|int|bool> $message The violation message data.
@@ -1003,12 +1072,11 @@ class Runner
                 $number = $index + 1;
                 echo "  [$number] {$fixOption['description']}" . PHP_EOL;
                 $current = $fixOption['current'] ?? null;
-                if ($current) {
-                    echo "      Current: \033[31m{$current}\033[0m" . PHP_EOL;
-                }
-                $preview = $fixOption['preview'] ?? $fixOption['newContent'] ?? null;
-                if ($preview !== null) {
-                    echo "      Preview: \033[32m{$preview}\033[0m" . PHP_EOL;
+                $newContent = $fixOption['newContent'] ?? '';
+
+
+                if ($current !== null) {
+                    echo $this->generateDiffDisplay($file, $line, $current, $newContent);
                 }
             }
             echo PHP_EOL;
@@ -1025,6 +1093,7 @@ class Runner
                 echo '  [f] Fix automatically' . PHP_EOL;
             }
 
+            echo '  [p] Add a phpcs:ignore to this line' . PHP_EOL;
             echo '  [i] Ignore this sniff for this file' . PHP_EOL;
             echo '  [a] Ignore this sniff for the entire project' . PHP_EOL;
             echo '  [e] Edit the file manually' . PHP_EOL;

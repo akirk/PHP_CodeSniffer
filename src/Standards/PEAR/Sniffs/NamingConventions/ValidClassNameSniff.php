@@ -63,7 +63,6 @@ class ValidClassNameSniff implements Sniff
                 [
                     'description' => "Suggestion",
                     'newContent' => $errorData[0],
-                    'preview' => $preview . $errorData[0],
                     'current' => $preview . $name,
                 ],
             ];
@@ -116,7 +115,7 @@ class ValidClassNameSniff implements Sniff
                     [
                         'description' => "Suggestion",
                         'newContent' => $newName,
-                        'preview' => $preview . $newName,
+                        'current' => $name,
                     ],
                 ];
                 $selection = $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'Invalid', $data, $fixOptions);

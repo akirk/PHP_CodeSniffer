@@ -457,7 +457,7 @@ final class Help
 
         $options['Run Options'] = [
             'a'          => [
-                'argument'    => '-a',
+                'argument'    => '-a, --interactive',
                 'description' => 'Run in interactive mode, pausing after each file.',
             ],
             'auto1'      => [
