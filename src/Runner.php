@@ -1151,6 +1151,12 @@ class Runner
                     echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
                     return ['action' => 'ignore_project'];
 
+                case 'p':
+                    $this->addPhpcsIgnoreToLine($file, $line, $source);
+                    echo 'Added phpcs:ignore comment to line ' . $line . PHP_EOL;
+                    echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
+                    return ['action' => 'ignore_line'];
+
                 case 'e':
                     $this->editFile($file, $line);
                     echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
@@ -1233,6 +1239,42 @@ class Runner
 
         $this->addExcludeToPhpcsXml($configFile, $sniffCode);
         echo "\033[32mAdded exclude for $sniffCode to $configFile.\033[0m" . PHP_EOL;
+    }
+
+
+    /**
+     * Add a phpcs:ignore comment to a specific line.
+     *
+     * @param \PHP_CodeSniffer\Files\File $file      The file being processed.
+     * @param int                         $line      The line number to add the ignore to.
+     * @param string                      $sniffCode The sniff code to ignore.
+     *
+     * @return void
+     */
+    private function addPhpcsIgnoreToLine(File $file, int $line, string $sniffCode)
+    {
+        $content = $file->getTokensAsString(0, $file->numTokens);
+        $lines = explode("\n", $content);
+
+        // Add phpcs:ignore comment to the violating line itself
+        $targetLine = $line - 1; // Convert to 0-based index
+
+        if (isset($lines[$targetLine])) {
+            $currentLine = rtrim($lines[$targetLine]);
+
+            // Check if there's already a phpcs:ignore comment on this line
+            if (strpos($currentLine, 'phpcs:ignore') !== false) {
+                // Append to existing ignore comment
+                $lines[$targetLine] = $currentLine . ",$sniffCode";
+            } else {
+                // Add new ignore comment to the end of the line
+                $lines[$targetLine] = $currentLine . " // phpcs:ignore $sniffCode";
+            }
+
+            // Write the modified content back to the file
+            $newContent = implode("\n", $lines);
+            file_put_contents($file->path, $newContent);
+        }
     }
 
 
