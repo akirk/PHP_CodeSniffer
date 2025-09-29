@@ -238,7 +238,7 @@ class InlineCommentSniff implements Sniff
                     'replaceWith' => '// ' . ucfirst($commentText) . PHP_EOL,
                 ],
             ];
-            $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'NotCapital', [], $fixOptions);
+            $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'NotCapital', $fixOptions);
         }
 
         // Only check the end of comment character if the start of the comment
@@ -276,7 +276,7 @@ class InlineCommentSniff implements Sniff
                         'replaceWith' => '',
                     ],
                 ];
-                $phpcsFile->addInteractivelyFixableError($error, $lastCommentToken, 'InvalidEndChar', $data, $fixOptions);
+                $phpcsFile->addInteractivelyFixableError($error, $lastCommentToken, 'InvalidEndChar', $fixOptions, $data);
             }
         }
 
