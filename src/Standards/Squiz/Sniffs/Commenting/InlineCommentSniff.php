@@ -231,11 +231,11 @@ class InlineCommentSniff implements Sniff
         }
 
         if (preg_match('/^\p{Ll}/u', $commentText) === 1) {
-            $error = 'Inline comments must start with a capital letter';
+            $error      = 'Inline comments must start with a capital letter';
             $fixOptions = [
                 [
-                    'description' => "Suggestion",
-                    'replaceWith' => '// ' . ucfirst( $commentText ) . PHP_EOL,
+                    'description' => 'Suggestion',
+                    'replaceWith' => '// ' . ucfirst($commentText) . PHP_EOL,
                 ],
             ];
             $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'NotCapital', [], $fixOptions);
@@ -255,18 +255,21 @@ class InlineCommentSniff implements Sniff
                 $ender = trim($ender, ' ,');
                 $data  = [$ender];
 
+                // Get the current line's comment text only for the fix.
+                $currentLineComment = trim(substr($tokens[$lastCommentToken]['content'], 2));
+
                 $fixOptions = [
                     [
                         'description' => 'Add period (.)',
-                        'replaceWith' => '// ' . rtrim($commentText) . '.' . PHP_EOL,
+                        'replaceWith' => '// ' . rtrim($currentLineComment) . '.' . PHP_EOL,
                     ],
                     [
                         'description' => 'Add exclamation mark (!)',
-                        'replaceWith' => '// ' . rtrim($commentText) . '!' . PHP_EOL,
+                        'replaceWith' => '// ' . rtrim($currentLineComment) . '!' . PHP_EOL,
                     ],
                     [
                         'description' => 'Add question mark (?)',
-                        'replaceWith' => '// ' . rtrim($commentText) . '?' . PHP_EOL,
+                        'replaceWith' => '// ' . rtrim($currentLineComment) . '?' . PHP_EOL,
                     ],
                     [
                         'description' => 'Remove comment',

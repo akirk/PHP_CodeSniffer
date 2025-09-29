@@ -56,12 +56,11 @@ class ValidClassNameSniff implements Sniff
 
             $fixOptions = [
                 [
-                    'description' => "Suggestion",
+                    'description' => 'Suggestion',
                     'replaceWith' => $errorData[0],
                 ],
             ];
             $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'StartWithCapital', $errorData, $fixOptions);
-
         }
 
         // Check that each new word starts with a capital as well, but don't
@@ -99,7 +98,7 @@ class ValidClassNameSniff implements Sniff
 
                 $fixOptions = [
                     [
-                        'description' => "Suggestion",
+                        'description' => 'Suggestion',
                         'replaceWith' => $newName,
                     ],
                 ];

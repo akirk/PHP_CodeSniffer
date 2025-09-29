@@ -829,6 +829,4 @@ class Fixer
             return $className;
         }
     }
-
-
 }

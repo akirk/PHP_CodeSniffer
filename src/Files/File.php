@@ -132,7 +132,7 @@ class File
     /**
      * Whether this file is in interactive mode for fixing violations.
      *
-     * @var bool
+     * @var boolean
      */
     protected $interactiveMode = false;
 
@@ -347,28 +347,28 @@ class File
     /**
      * Get lines of context around a specific line number.
      *
-     * @param int $lineNumber    The target line number.
-     * @param int $contextLines  Number of context lines before and after.
+     * @param int $lineNumber   The target line number.
+     * @param int $contextLines Number of context lines before and after.
      *
      * @return array Array with keys: 'lines' (array of line content), 'startLine' (first line number), 'endLine' (last line number).
      */
     public function getLineContext(int $lineNumber, int $contextLines = 2)
     {
-        $lines = explode("\n", $this->content);
+        $lines      = explode("\n", $this->content);
         $totalLines = count($lines);
 
-        $startLine = max(1, $lineNumber - $contextLines);
-        $endLine = min($totalLines, $lineNumber + $contextLines);
+        $startLine = max(1, ($lineNumber - $contextLines));
+        $endLine   = min($totalLines, ($lineNumber + $contextLines));
 
         $contextLines = [];
         for ($i = $startLine; $i <= $endLine; $i++) {
-            $contextLines[$i] = $lines[$i - 1] ?? '';
+            $contextLines[$i] = ($lines[($i - 1)] ?? '');
         }
 
         return [
-            'lines' => $contextLines,
+            'lines'     => $contextLines,
             'startLine' => $startLine,
-            'endLine' => $endLine,
+            'endLine'   => $endLine,
         ];
     }
 
@@ -382,16 +382,16 @@ class File
     {
         $clone = new DummyFile($this->content, $this->ruleset, $this->config);
 
-        // Copy essential state
-        $clone->path = $this->path . '_temp_' . uniqid();
+        // Copy essential state.
+        $clone->path    = $this->path . '_temp_' . uniqid();
         $clone->eolChar = $this->eolChar;
-        $clone->setInteractiveMode(false); // Disable interactive mode for clones
-
-        // Copy the tokens directly instead of processing again
-        $clone->tokens = $this->tokens;
+        $clone->setInteractiveMode(false);
+        // Disable interactive mode for clones
+        // Copy the tokens directly instead of processing again.
+        $clone->tokens    = $this->tokens;
         $clone->numTokens = $this->numTokens;
         $clone->tokenizer = $this->tokenizer;
-        $clone->fixer = new \PHP_CodeSniffer\Fixer();
+        $clone->fixer     = new \PHP_CodeSniffer\Fixer();
         $clone->fixer->startFile($clone);
 
         return $clone;
@@ -413,64 +413,74 @@ class File
         $originalLines = explode("\n", $originalContent);
         $modifiedLines = explode("\n", $modifiedContent);
 
-        // Calculate context range around the focus line
-        $startLine = max(1, $focusLine - $contextLines);
-        $endLine = min(count($originalLines), $focusLine + $contextLines);
+        // Calculate context range around the focus line.
+        $startLine = max(1, ($focusLine - $contextLines));
+        $endLine   = min(count($originalLines), ($focusLine + $contextLines));
 
         $diff = [];
         for ($i = $startLine; $i <= $endLine; $i++) {
-            $originalLine = $originalLines[$i - 1] ?? '';
-            $modifiedLine = $modifiedLines[$i - 1] ?? '';
+            $originalLine = ($originalLines[($i - 1)] ?? '');
+            $modifiedLine = ($modifiedLines[($i - 1)] ?? '');
 
             if ($originalLine !== $modifiedLine) {
-                // Lines are different
                 if ($originalLine !== '') {
                     $diff[] = [
-                        'type' => 'removed',
+                        'type'    => 'removed',
                         'lineNum' => $i,
-                        'content' => $originalLine
+                        'content' => $originalLine,
                     ];
                 }
+
                 if ($modifiedLine !== '') {
                     $diff[] = [
-                        'type' => 'added',
+                        'type'    => 'added',
                         'lineNum' => $i,
-                        'content' => $modifiedLine
+                        'content' => $modifiedLine,
                     ];
                 }
             } else {
-                // Context line
-                $diff[] = [
-                    'type' => 'context',
-                    'lineNum' => $i,
-                    'content' => $originalLine
-                ];
+                                $diff[] = [
+                                    'type'    => 'context',
+                                    'lineNum' => $i,
+                                    'content' => $originalLine,
+                                ];
             }
         }
 
-        // Post-process: convert unchanged lines that appear to shift into context
-        for ($i = 1; $i < count($diff); $i++) {
-            $current = $diff[$i];
-            $previous = $diff[$i - 1];
+        // Post-process: convert unchanged lines that appear to shift into context.
+        $changes = true;
+        while ($changes) {
+            $changes = false;
+            for ($i = 1; $i < count($diff); $i++) {
+                if (!isset($diff[$i]) || !isset($diff[($i - 1)])) {
+                    continue;
+                }
 
-            if (($current['type'] === 'added' && $previous['type'] === 'removed') ||
-                ($current['type'] === 'removed' && $previous['type'] === 'added')) {
+                $current  = $diff[$i];
+                $previous = $diff[($i - 1)];
 
-                if (trim($current['content']) === trim($previous['content'])) {
-                    // This is just a line that shifted position, treat as context and remove the duplicate
-                    $diff[$i]['type'] = 'context';
-                    unset($diff[$i - 1]);
+                if (($current['type'] === 'added' && $previous['type'] === 'removed')
+                    || ($current['type'] === 'removed' && $previous['type'] === 'added')
+                ) {
+                    if (trim($current['content']) === trim($previous['content'])) {
+                        // This is just a line that shifted position, treat as context and remove the duplicate
+                        $diff[$i]['type'] = 'context';
+                        unset($diff[($i - 1)]);
+                        $diff    = array_values($diff);
+                        $changes = true;
+                        break;
+                        // Restart the loop since array indices changed
+                    }
                 }
             }
         }
 
-        $diff = array_values($diff);
-
         // Remove unnecessary added line at the end if the previous line is context
-        $lastIndex = count($diff) - 1;
-        if ($lastIndex > 0 &&
-            $diff[$lastIndex]['type'] === 'added' &&
-            $diff[$lastIndex - 1]['type'] === 'context') {
+        $lastIndex = (count($diff) - 1);
+        if ($lastIndex > 0
+            && $diff[$lastIndex]['type'] === 'added'
+            && $diff[($lastIndex - 1)]['type'] === 'context'
+        ) {
             unset($diff[$lastIndex]);
         }
 
@@ -882,49 +892,57 @@ class File
             $column = $this->tokens[$stackPtr]['column'];
         }
 
-        $violationKey = $this->getViolationKey( $line, $column, $code );
+        $violationKey = $this->getViolationKey($line, $column, $code);
 
         if ($applyFix === null) {
-            $applyFix = [$this, 'applyInteractiveFix'];
+            $applyFix = [
+                $this,
+                'applyInteractiveFix',
+            ];
         }
 
-        foreach ( array_keys( $fixOptions ) as $k ) {
+        foreach (array_keys($fixOptions) as $k) {
             $tempFile = $this->createTempClone();
             $applyFix($tempFile, $stackPtr, $fixOptions[$k]);
-            $modifiedContent = $tempFile->fixer->getContents();
-            $fixOptions[$k]['diff'] = $this->generateDiff($this->content, $modifiedContent, $line);
-            $fixOptions[$k]['current'] = trim( $this->tokens[$stackPtr]['content'] );
+            $modifiedContent           = $tempFile->fixer->getContents();
+            $fixOptions[$k]['diff']    = $this->generateDiff($this->content, $modifiedContent, $line);
+            $fixOptions[$k]['current'] = trim($this->tokens[$stackPtr]['content']);
         }
 
         $this->interactiveFixOptions[$violationKey] = $fixOptions;
 
         $selectedFix = $this->selectedInteractiveFixOptions[$violationKey] ?? null;
-        if ( $this->interactiveMode && false === $selectedFix ) {
+        if ($this->interactiveMode && false === $selectedFix) {
             return false;
         }
+
         $recorded = $this->addError($error, $stackPtr, $code, $data, $severity, $this->interactiveMode);
         if ($recorded === true && $this->fixer->enabled === true) {
             if ($selectedFix !== null && isset($fixOptions[$selectedFix]) && $applyFix !== null) {
                 $applyFix($this, $stackPtr, $fixOptions[$selectedFix]);
             }
+
             return $selectedFix;
         }
 
         return false;
     }
 
-    private function getViolationKey( int $line, int $column, string $code ) {
+
+    private function getViolationKey(int $line, int $column, string $code)
+    {
         $parts = explode('.', $code);
         if ($parts[0] !== $code) {
             // The full message code has been passed in.
             $sniffCode = $code;
         } else {
             $listenerCode = Common::getSniffCode($this->activeListener);
-            $sniffCode = $listenerCode . '.' . $code;
+            $sniffCode    = $listenerCode . '.' . $code;
         }
 
         return $line . ':' . $column . ':' . $sniffCode;
     }
+
 
     /**
      * Default interactive fix application function.
@@ -940,6 +958,7 @@ class File
         $file->fixer->replaceToken($tokenPtr, $fixOption['replaceWith']);
     }
 
+
     /**
      * Get interactive fix options for a specific violation.
      *
@@ -951,27 +970,28 @@ class File
      */
     public function getInteractiveFixOptions(int $line, int $column, string $code)
     {
-        $violationKey = $this->getViolationKey( $line, $column, $code );
-        return $this->interactiveFixOptions[$violationKey] ?? [];
+        $violationKey = $this->getViolationKey($line, $column, $code);
+        return ($this->interactiveFixOptions[$violationKey] ?? []);
     }
 
 
     /**
      * Set the selected interactive fix option for a specific violation.
      *
-     * @param int    $line   The line number of the violation.
-     * @param int    $column The column number of the violation.
-     * @param string $code   The violation code.
-     * @param int  $selectedFix The selected fix option.
+     * @param int    $line        The line number of the violation.
+     * @param int    $column      The column number of the violation.
+     * @param string $code        The violation code.
+     * @param int    $selectedFix The selected fix option.
      *
      * @return void
      */
     public function setSelectedInteractiveFixOption(int $line, int $column, string $code, int $selectedFix)
     {
 
-        $violationKey = $this->getViolationKey( $line, $column, $code );
+        $violationKey = $this->getViolationKey($line, $column, $code);
         $this->selectedInteractiveFixOptions[$violationKey] = $selectedFix;
     }
+
 
     /**
      * Skip the selected interactive fix option for a specific violation.
@@ -988,6 +1008,7 @@ class File
         $violationKey = $this->getViolationKey($line, $column, $code);
         $this->selectedInteractiveFixOptions[$violationKey] = false;
     }
+
 
     /**
      * Records a warning against a specific token in the file.
@@ -1157,9 +1178,10 @@ class File
         if (isset($this->tokenizer->ignoredLines[$line]) === true && $this->tokenizer->ignoredLines[$line]->ignoresEverything() === true) {
             return false;
         }
-        if ( $this->interactiveMode ) {
-            $violationKey = $this->getViolationKey( $line, $column, $code );
-            if ( isset( $this->selectedInteractiveFixOptions[$violationKey] ) && false === $this->selectedInteractiveFixOptions[$violationKey] ) {
+
+        if ($this->interactiveMode) {
+            $violationKey = $this->getViolationKey($line, $column, $code);
+            if (isset($this->selectedInteractiveFixOptions[$violationKey]) && false === $this->selectedInteractiveFixOptions[$violationKey]) {
                 return false;
             }
         }
