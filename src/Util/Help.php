@@ -461,7 +461,7 @@ final class Help
                 'description' => 'Run in interactive mode, pausing after each file.',
             ],
             'auto1'      => [
-                'argument'    => '-1',
+                'argument'    => '-1, --auto-first',
                 'description' => 'Automatically choose the first option when prompted in interactive mode.',
             ],
             'bootstrap'  => [

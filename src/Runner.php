@@ -576,7 +576,7 @@ class Runner
             if ($this->config->interactive === true && PHP_CODESNIFFER_CBF === true) {
                 // In PHPCBF interactive mode, we handle interaction inside processFile()
                 // because we need to do it before fixing.
-                $file->interactiveMode = true;
+                $file->setInteractiveMode(true);
                 $file->process();
                 $this->handlePhpcbfInteractiveMode($file);
                 $file->ruleset->populateTokenListeners();

@@ -164,7 +164,7 @@ class Config
         'standards'       => null,
         'verbosity'       => null,
         'interactive'     => null,
-        'autoFirst'      => null,
+        'autoFirst'       => null,
         'parallel'        => null,
         'cache'           => null,
         'cacheFile'       => null,
@@ -831,10 +831,6 @@ class Config
 
                 $this->annotations = false;
                 $this->overriddenDefaults['annotations'] = true;
-                break;
-            case 'interactive':
-                $this->interactive = true;
-                $this->overriddenDefaults['interactive'] = true;
                 break;
             case 'config-set':
                 if (isset($this->cliArgs[($pos + 1)]) === false
@@ -1536,8 +1532,9 @@ class Config
     {
         $longOptions   = Help::DEFAULT_LONG_OPTIONS;
         $longOptions[] = 'suffix';
+        $longOptions[] = 'auto-first';
         $longOptions[] = 'auto1';
-        $shortOptions  = Help::DEFAULT_SHORT_OPTIONS . 'a';
+        $shortOptions  = Help::DEFAULT_SHORT_OPTIONS . 'a1';
 
         (new Help($this, $longOptions, $shortOptions))->display();
     }

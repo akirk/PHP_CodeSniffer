@@ -129,7 +129,12 @@ class File
      */
     protected $metrics = [];
 
-    public $interactiveMode = false;
+    /**
+     * Whether this file is in interactive mode for fixing violations.
+     *
+     * @var bool
+     */
+    protected $interactiveMode = false;
 
     /**
      * Interactive fix options for violations.
@@ -327,6 +332,19 @@ class File
 
 
     /**
+     * Set the interactive mode for this file.
+     *
+     * @param bool $interactive Whether the file should be in interactive mode.
+     *
+     * @return void
+     */
+    public function setInteractiveMode(bool $interactive)
+    {
+        $this->interactiveMode = $interactive;
+    }
+
+
+    /**
      * Get lines of context around a specific line number.
      *
      * @param int $lineNumber    The target line number.
@@ -367,7 +385,7 @@ class File
         // Copy essential state
         $clone->path = $this->path . '_temp_' . uniqid();
         $clone->eolChar = $this->eolChar;
-        $clone->interactiveMode = false; // Disable interactive mode for clones
+        $clone->setInteractiveMode(false); // Disable interactive mode for clones
 
         // Copy the tokens directly instead of processing again
         $clone->tokens = $this->tokens;
@@ -967,7 +985,7 @@ class File
     public function skipInteractiveFix(int $line, int $column, string $code)
     {
 
-        $violationKey = $line . ':' . $column . ':' . $code;
+        $violationKey = $this->getViolationKey($line, $column, $code);
         $this->selectedInteractiveFixOptions[$violationKey] = false;
     }
 
