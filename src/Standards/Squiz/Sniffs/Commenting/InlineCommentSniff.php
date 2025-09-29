@@ -234,7 +234,7 @@ class InlineCommentSniff implements Sniff
         if (preg_match('/^\p{Ll}/u', $commentText) === 1) {
             $error = 'Inline comments must start with a capital letter';
 
-            $fixOptions = [new ReplaceOption($phpcsFile, 'Suggestion', '// ' . ucfirst($commentText) . PHP_EOL)];
+            $fixOptions = [new ReplaceOption($phpcsFile, 'Capitalize first letter', '// ' . ucfirst($commentText) . PHP_EOL)];
             $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'NotCapital', $fixOptions);
         }
 
