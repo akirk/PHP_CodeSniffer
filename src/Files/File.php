@@ -414,7 +414,7 @@ class File
         $modifiedLines = explode("\n", $modifiedContent);
 
         // Calculate focus line from stack pointer.
-        $focusLine = ($stackPtr === null) ? 1 : $this->tokens[$stackPtr]['line'];
+        $focusLine = $this->tokens[$stackPtr]['line'];
 
         // Calculate context range around the focus line.
         $startLine = max(1, ($focusLine - $contextLines));
@@ -442,16 +442,27 @@ class File
                     ];
                 }
             } else {
-                                $diff[] = [
-                                    'type'    => 'context',
-                                    'lineNum' => $i,
-                                    'content' => $originalLine,
-                                ];
+                // Highlight the focus line even if unchanged to make it stand out
+                if ($i === $focusLine) {
+                    $diff[] = [
+                        'type'    => 'highlight',
+                        'lineNum' => $i,
+                        'content' => $originalLine,
+                    ];
+                } else {
+                    $diff[] = [
+                        'type'    => 'context',
+                        'lineNum' => $i,
+                        'content' => $originalLine,
+                    ];
+                }
             }
         }
 
         // Post-process: convert unchanged lines that appear to shift into context.
-        $changes = true;
+        $changes    = true;
+        $shouldRemoveTrailingContext = false;
+
         while ($changes === true) {
             $changes = false;
             for ($i = 1; $i < count($diff); $i++) {
@@ -465,6 +476,9 @@ class File
 
                 $current  = $diff[$i];
                 $previous = $diff[($i - 1)];
+
+                $shouldRemoveTrailingContext |= $current['type'] === 'added';
+                $shouldRemoveTrailingContext |= $current['type'] === 'removed';
 
                 if (($current['type'] === 'added' && $previous['type'] === 'removed')
                     || ($current['type'] === 'removed' && $previous['type'] === 'added')
@@ -483,10 +497,12 @@ class File
         }
 
         // Remove unnecessary added line at the end if the previous line is context
+        // But only if this looks like a real diff (has both added and removed lines)
         $lastIndex = (count($diff) - 1);
         if ($lastIndex > 0
             && $diff[$lastIndex]['type'] === 'added'
             && $diff[($lastIndex - 1)]['type'] === 'context'
+            && $shouldRemoveTrailingContext
         ) {
             unset($diff[$lastIndex]);
         }
@@ -871,13 +887,14 @@ class File
     /**
      * Records an error with interactive fix options against a specific token in the file.
      *
-     * @param string                                                    $error      The error message.
-     * @param int|null                                                  $stackPtr   The stack position where the error occurred.
-     * @param string                                                    $code       A violation code unique to the sniff message.
-     * @param \PHP_CodeSniffer\Interactive\InteractiveOption[]                 $fixOptions Array of InteractiveOption objects.
-     * @param array                                                     $data       Replacements for the error message.
-     * @param int                                                       $severity   The severity level for this error. A value of 0
-     *                                                                               will be converted into the default severity level.
+     * @param string                                           $error      The error message.
+     * @param int|null                                         $stackPtr   The stack position where the error occurred.
+     * @param string                                           $code       A violation code unique to the sniff message.
+     * @param \PHP_CodeSniffer\Interactive\InteractiveOption[] $fixOptions Array of InteractiveOption objects.
+     * @param array                                            $data       Replacements for the error message.
+     * @param int                                              $severity   The severity level for this error. A value of 0
+     *                                                                     will be converted into the default severity
+     *                                                                     level.
      *
      * @return int|bool The user's selection (1-based) or false if not in interactive mode.
      */
@@ -935,7 +952,6 @@ class File
 
         return $line . ':' . $column . ':' . $sniffCode;
     }
-
 
 
     /**

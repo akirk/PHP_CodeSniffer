@@ -17,7 +17,6 @@ use PHP_CodeSniffer\Files\File;
 class ReplaceOption extends InteractiveOption
 {
 
-
     /**
      * The replacement text for the token.
      *
@@ -30,8 +29,8 @@ class ReplaceOption extends InteractiveOption
      * Constructor.
      *
      * @param \\PHP_CodeSniffer\\Files\\File $file        The file being processed.
-     * @param string                      $description Human-readable description of the fix.
-     * @param string                      $replaceWith The replacement text for the token.
+     * @param string                         $description Human-readable description of the fix.
+     * @param string                         $replaceWith The replacement text for the token.
      */
     public function __construct(File $file, string $description, string $replaceWith)
     {
@@ -52,6 +51,4 @@ class ReplaceOption extends InteractiveOption
     {
         $file->fixer->replaceToken($stackPtr, $this->replaceWith);
     }
-
-
 }

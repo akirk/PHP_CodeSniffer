@@ -17,7 +17,6 @@ use PHP_CodeSniffer\Files\File;
 abstract class InteractiveOption
 {
 
-
     /**
      * Human-readable description of what this fix does.
      *
@@ -48,7 +47,7 @@ abstract class InteractiveOption
      */
     public function __construct(File $file, string $description)
     {
-        $this->file = $file;
+        $this->file        = $file;
         $this->description = $description;
     }
 
@@ -78,9 +77,9 @@ abstract class InteractiveOption
     /**
      * Get the diff preview for this fix.
      *
-     * @param int   $stackPtr The token position to fix.
+     * @param int $stackPtr The token position to fix.
      *
-     * @return array The diff preview.
+     * @return void
      */
     public function generateDiff(int $stackPtr)
     {
@@ -104,6 +103,4 @@ abstract class InteractiveOption
      * @return void
      */
     abstract public function applyFix(File $file, int $stackPtr);
-
-
 }

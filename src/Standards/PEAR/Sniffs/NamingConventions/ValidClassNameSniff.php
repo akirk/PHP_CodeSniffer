@@ -55,9 +55,7 @@ class ValidClassNameSniff implements Sniff
         if (preg_match('|^[A-Z]|', $name) === 0) {
             $error = '%s name must begin with a capital letter';
 
-            $fixOptions = [
-                new ReplaceOption($phpcsFile, 'Suggestion', $errorData[0])
-            ];
+            $fixOptions = [new ReplaceOption($phpcsFile, 'Suggestion', $errorData[0])];
             $phpcsFile->addInteractivelyFixableError($error, $className, 'StartWithCapital', $fixOptions, $errorData);
         }
 
@@ -94,9 +92,7 @@ class ValidClassNameSniff implements Sniff
                 $data    = $errorData;
                 $data[]  = $newName;
 
-                $fixOptions = [
-                    new ReplaceOption($phpcsFile, 'Suggestion', $newName)
-                ];
+                $fixOptions = [new ReplaceOption($phpcsFile, 'Suggestion', $newName)];
                 $phpcsFile->addInteractivelyFixableError($error, $className, 'Invalid', $fixOptions, $data);
             }
         }

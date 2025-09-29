@@ -20,6 +20,7 @@ use PHP_CodeSniffer\Exceptions\RuntimeException;
 use PHP_CodeSniffer\Files\DummyFile;
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Files\FileList;
+use PHP_CodeSniffer\Interactive\ContextOption;
 use PHP_CodeSniffer\Util\Cache;
 use PHP_CodeSniffer\Util\Common;
 use PHP_CodeSniffer\Util\ExitCode;
@@ -943,7 +944,7 @@ class Runner
 
         echo "\033[1m" . 'PHPCBF INTERACTIVE MODE - ' . basename($file->path) . "\033[0m" . PHP_EOL . PHP_EOL;
 
-        foreach ([ 'errors' => $errors, 'warnings' => $warnings] as $type => $violations) {
+        foreach (compact('errors', 'warnings') as $type => $violations) {
             foreach ($violations as $line => $lineViolations) {
                 foreach ($lineViolations as $column => $messages) {
                     foreach ($messages as $message) {
@@ -983,6 +984,9 @@ class Runner
                 case 'added':
                     $output .= "      \033[32m{$lineNumber}+ {$content}\033[0m" . PHP_EOL;
                     break;
+                case 'highlight':
+                    $output .= "      \033[33m{$lineNumber}> {$content}\033[0m" . PHP_EOL;
+                    break;
                 case 'context':
                     $output .= "      \033[90m{$lineNumber}  {$content}\033[0m" . PHP_EOL;
                     break;
@@ -1010,7 +1014,11 @@ class Runner
         $messageText = isset($message['message']) ? $message['message'] : 'Unknown violation';
         $source      = isset($message['source']) ? $message['source'] : 'Unknown.Source';
         $fixable     = isset($message['fixable']) ? $message['fixable'] : false;
-        $stackPtr    = isset($message['stackPtr']) ? $message['stackPtr'] : null;
+        $stackPtr    = isset($message['stackPtr']) ? $message['stackPtr'] : $this->findStackPtrAtPosition($file, $line, $column);
+        if ($stackPtr === null) {
+            error_log("WARNING: Could not find stack pointer at $line:$column in file {$file->path}");
+            return ['action' => 'skip'];
+        }
 
         $input = false;
 
@@ -1037,7 +1045,7 @@ class Runner
             echo "  \033[31m(Not auto-fixable)\033[0m" . PHP_EOL;
         }
 
-        // If interactive fixes are available, present them first
+        // Show context for all violation types
         if ($hasInteractiveFixes) {
             echo PHP_EOL . "\033[1mInteractive Fix Options:\033[0m" . PHP_EOL;
 
@@ -1052,6 +1060,14 @@ class Runner
             }
 
             echo PHP_EOL;
+        } else {
+            echo PHP_EOL;
+            $contextOption = new ContextOption($file, 'Context', $fixable);
+            $contextOption->generateDiff($stackPtr);
+            $diff = $contextOption->getDiff();
+            if (!empty($diff)) {
+                echo $this->generateDiffDisplay($diff);
+            }
         }
 
         if (! $input) {
@@ -1314,12 +1330,11 @@ class Runner
      */
     private function editFile(File $file, int $line)
     {
+        // Apply all fixes made so far and write to file so user edits the current state
         $file->fixer->enabled = true;
-        $fixedContent         = $file->fixer->fixFile();
-        if ($fixedContent !== false) {
-            file_put_contents($file->path, $fixedContent);
-        } else {
-        }
+        $file->fixer->fixFile();
+        $fixedContent = $file->fixer->getContents();
+        file_put_contents($file->path, $fixedContent);
 
         // Check VISUAL first (preferred), then EDITOR
         $editor = getenv('VISUAL');
@@ -1336,31 +1351,26 @@ class Runner
             return;
         }
 
-        $command = escapeshellcmd($editor) . ' ' . escapeshellarg($file->path);
-
-        // Add line number support for common editors
-        $editorName = basename($editor);
+        // Add line number support for common editors:
+        $editorName = strtok(basename($editor), ' ');
         if (in_array($editorName, ['nano', 'vim', 'vi', 'nvim'], true)) {
-            $command .= ' +' . $line;
-        } elseif (in_array($editorName, ['emacs', 'code', 'subl'], true)) {
-            // Different syntax for other editors
-            if ($editorName === 'emacs') {
-                $command .= ' +' . $line;
-            } elseif ($editorName === 'code') {
-                $command .= ' --goto ' . $line;
-            } elseif ($editorName === 'subl') {
-                $command .= ':' . $line;
-            }
+            $command = escapeshellcmd($editor) . ' +' . $line . ' ' . escapeshellarg($file->path);
+        } elseif ($editorName === 'emacs') {
+            $command = escapeshellcmd($editor) . ' +' . $line . ' ' . escapeshellarg($file->path);
+        } elseif ($editorName === 'code') {
+            $command = escapeshellcmd($editor) . ' --goto ' . escapeshellarg($file->path . ':' . $line);
+        } elseif ($editorName === 'subl') {
+            // For Sublime Text, use file:line syntax
+            $command = escapeshellcmd($editor) . ' ' . escapeshellarg($file->path . ':' . $line);
+        } else {
+            // Default: just open the file without line number
+            $command = escapeshellcmd($editor) . ' ' . escapeshellarg($file->path);
         }
 
         echo "Opening file with: $command" . PHP_EOL;
-        echo 'Press ENTER when you have finished editing...' . PHP_EOL;
 
         // Execute editor
-        system($command);
-
-        // Wait for user confirmation
-        fgets(STDIN);
+        system($command, $returnCode);
 
         // Reload the file content
         $file->reloadContent();
@@ -1440,5 +1450,36 @@ class Runner
         $dom->formatOutput = true;
         $dom->loadXML($xml->asXML());
         $dom->save($configFile);
+    }
+
+
+    /**
+     * Find the stack pointer at a specific line and column position.
+     *
+     * @param \PHP_CodeSniffer\Files\File $file   The file to search in.
+     * @param int                         $line   The line number.
+     * @param int                         $column The column number.
+     *
+     * @return int The stack pointer.
+     */
+    private function findStackPtrAtPosition(File $file, int $line, int $column)
+    {
+        $tokens = $file->getTokens();
+        // Find the first token on the specified line at or near the column
+        for ($i = 0; $i < $file->numTokens; $i++) {
+            if ($tokens[$i]['line'] === $line && $tokens[$i]['column'] <= $column) {
+                // Check if the next token is also on the same line and closer to the column
+                if (isset($tokens[($i + 1)])
+                    && $tokens[($i + 1)]['line'] === $line
+                    && $tokens[($i + 1)]['column'] <= $column
+                ) {
+                    continue;
+                }
+
+                return $i;
+            }
+        }
+
+        return $file->numTokens - 1;
     }
 }
