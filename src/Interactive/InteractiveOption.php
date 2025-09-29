@@ -26,7 +26,7 @@ abstract class InteractiveOption
     protected $description;
 
     /**
-     * The diff preview for this fix (populated automatically).
+     * The diff preview for this fix.
      *
      * @var array|null
      */
