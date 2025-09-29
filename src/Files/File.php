@@ -449,10 +449,14 @@ class File
 
         // Post-process: convert unchanged lines that appear to shift into context.
         $changes = true;
-        while ($changes) {
+        while ($changes === true) {
             $changes = false;
             for ($i = 1; $i < count($diff); $i++) {
-                if (!isset($diff[$i]) || !isset($diff[($i - 1)])) {
+                if (!isset($diff[$i])) {
+                    continue;
+                }
+
+                if (!isset($diff[($i - 1)])) {
                     continue;
                 }
 
