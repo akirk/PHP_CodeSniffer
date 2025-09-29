@@ -888,13 +888,17 @@ class File
 
         $this->interactiveFixOptions[$violationKey] = $fixOptions;
 
-        if ($this->interactiveMode === true && isset($this->selectedInteractiveFixOptions[$violationKey]) === false) {
+        if (isset($this->selectedInteractiveFixOptions[$violationKey]) === false) {
+            $selectedOption = null;
+        } else {
+            $selectedOption = $this->selectedInteractiveFixOptions[$violationKey];
+        }
+        if ($this->interactiveMode === true && $selectedOption === false) {
             return false;
         }
 
         $recorded = $this->addError($error, $stackPtr, $code, $data, $severity, $this->interactiveMode);
         if ($recorded === true && $this->fixer->enabled === true) {
-            $selectedOption = $this->selectedInteractiveFixOptions[$violationKey];
             if ($selectedOption !== null && isset($fixOptions[$selectedOption]) === true) {
                 $fixOptions[$selectedOption]->applyFix($this, $stackPtr);
             }

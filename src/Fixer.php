@@ -761,63 +761,31 @@ class Fixer
      */
     public function addPhpcsIgnoreToLine(int $line, string $sniffCode)
     {
-        $tokens = $this->currentFile->getTokens();
+        $content = $this->getContents();
+        $lines = explode($this->currentFile->eolChar, $content);
 
-        // Find the last non-whitespace token on the specified line
-        $lastNonWhitespaceToken = null;
-        $lineEndToken = null;
-
-        foreach ($tokens as $stackPtr => $token) {
-            if ($token['line'] === $line) {
-                if (trim($token['content']) !== '') {
-                    $lastNonWhitespaceToken = $stackPtr;
-                }
-                $lineEndToken = $stackPtr;
-            } elseif ($token['line'] > $line) {
-                break;
-            }
-        }
-
-        if ($lastNonWhitespaceToken === null) {
+        // Check if the target line exists
+        if (!isset($lines[$line - 1])) {
             return false;
         }
 
+        $targetLine = $lines[$line - 1];
+
         // Check if there's already a phpcs:ignore comment on this line
-        $lineContent = '';
-        foreach ($tokens as $stackPtr => $token) {
-            if ($token['line'] === $line) {
-                $lineContent .= $token['content'];
-            } elseif ($token['line'] > $line) {
-                break;
-            }
-        }
-
-        $result = false;
-        if (strpos($lineContent, 'phpcs:ignore') !== false) {
-            // If there's already a phpcs:ignore, we need to append to it
-            // For now, let's find the existing comment and modify it
-            $currentContent = $this->getTokenContent($lastNonWhitespaceToken);
-            if (strpos($currentContent, 'phpcs:ignore') !== false) {
-                $newContent = $currentContent . ",$sniffCode";
-                $result = $this->replaceToken($lastNonWhitespaceToken, $newContent);
-            } else {
-                // The comment is on a different token, just add our sniff code
-                $result = $this->addContent($lastNonWhitespaceToken, ",$sniffCode");
-            }
+        if (strpos(strtolower($targetLine), 'phpcs:ignore') !== false) {
+            // Append the sniff code to the existing ignore comment
+            $lines[$line - 1] = $targetLine . ',' . $sniffCode;
         } else {
-            // Add new phpcs:ignore comment after the last non-whitespace token
-            $result = $this->addContent($lastNonWhitespaceToken, " // phpcs:ignore $sniffCode");
+            // Add new phpcs:ignore comment to the end of the line
+            $lines[$line - 1] = rtrim($targetLine) . ' // phpcs:ignore ' . $sniffCode;
         }
 
-        // After making the change, reload the file content and reprocess
-        if ($result === true) {
-            $contents = $this->getContents();
-            $this->currentFile->ruleset->populateTokenListeners();
-            $this->currentFile->setContent($contents);
-            $this->currentFile->process();
-        }
+        // Reconstruct content and update the file
+        $newContent = implode($this->currentFile->eolChar, $lines);
+        $this->currentFile->setContent($newContent);
+        $this->currentFile->process();
 
-        return $result;
+        return true;
     }
 
 
