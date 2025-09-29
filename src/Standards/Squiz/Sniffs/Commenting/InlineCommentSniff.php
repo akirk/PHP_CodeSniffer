@@ -11,6 +11,7 @@
 namespace PHP_CodeSniffer\Standards\Squiz\Sniffs\Commenting;
 
 use PHP_CodeSniffer\Files\File;
+use PHP_CodeSniffer\Interactive\ReplaceOption;
 use PHP_CodeSniffer\Sniffs\Sniff;
 use PHP_CodeSniffer\Util\Tokens;
 
@@ -233,10 +234,7 @@ class InlineCommentSniff implements Sniff
         if (preg_match('/^\p{Ll}/u', $commentText) === 1) {
             $error      = 'Inline comments must start with a capital letter';
             $fixOptions = [
-                [
-                    'description' => 'Suggestion',
-                    'replaceWith' => '// ' . ucfirst($commentText) . PHP_EOL,
-                ],
+                new ReplaceOption($phpcsFile, 'Suggestion', '// ' . ucfirst($commentText) . PHP_EOL)
             ];
             $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'NotCapital', $fixOptions);
         }
@@ -258,24 +256,16 @@ class InlineCommentSniff implements Sniff
                 // Get the current line's comment text only for the fix.
                 $currentLineComment = trim(substr($tokens[$lastCommentToken]['content'], 2));
 
-                $fixOptions = [
-                    [
-                        'description' => 'Add period (.)',
-                        'replaceWith' => '// ' . rtrim($currentLineComment) . '.' . PHP_EOL,
-                    ],
-                    [
-                        'description' => 'Add exclamation mark (!)',
-                        'replaceWith' => '// ' . rtrim($currentLineComment) . '!' . PHP_EOL,
-                    ],
-                    [
-                        'description' => 'Add question mark (?)',
-                        'replaceWith' => '// ' . rtrim($currentLineComment) . '?' . PHP_EOL,
-                    ],
-                    [
-                        'description' => 'Remove comment',
-                        'replaceWith' => '',
-                    ],
-                ];
+                $fixOptions = [];
+                foreach ( self::VALID_SENTENCE_END_CHARS as $symbol) {
+                    $fixOptions[] = new ReplaceOption(
+                        $phpcsFile,
+                        'Add ' . $symbol,
+                        '// ' . rtrim($currentLineComment) . $symbol . PHP_EOL
+                    );
+                }
+                $fixOptions[] = new ReplaceOption($phpcsFile, 'Remove comment', '');
+
                 $phpcsFile->addInteractivelyFixableError($error, $lastCommentToken, 'InvalidEndChar', $fixOptions, $data);
             }
         }

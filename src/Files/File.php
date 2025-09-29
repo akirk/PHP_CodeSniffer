@@ -14,6 +14,7 @@ use PHP_CodeSniffer\Config;
 use PHP_CodeSniffer\Exceptions\RuntimeException;
 use PHP_CodeSniffer\Exceptions\TokenizerException;
 use PHP_CodeSniffer\Fixer;
+use PHP_CodeSniffer\Interactive\InteractiveOption;
 use PHP_CodeSniffer\Ruleset;
 use PHP_CodeSniffer\Tokenizers\PHP;
 use PHP_CodeSniffer\Util\Common;
@@ -401,17 +402,19 @@ class File
     /**
      * Generate a diff between original and modified content.
      *
-     * @param string $originalContent The original file content.
      * @param string $modifiedContent The modified file content.
-     * @param int    $focusLine       The line number to focus the diff around.
+     * @param int    $stackPtr        The token position to focus the diff around.
      * @param int    $contextLines    Number of context lines to show.
      *
      * @return array Array with diff information for display.
      */
-    private function generateDiff(string $originalContent, string $modifiedContent, int $focusLine, int $contextLines = 2)
+    public function generateDiff(string $modifiedContent, int $stackPtr, int $contextLines = 2)
     {
-        $originalLines = explode("\n", $originalContent);
+        $originalLines = explode("\n", $this->content);
         $modifiedLines = explode("\n", $modifiedContent);
+
+        // Calculate focus line from stack pointer.
+        $focusLine = ($stackPtr === null) ? 1 : $this->tokens[$stackPtr]['line'];
 
         // Calculate context range around the focus line.
         $startLine = max(1, ($focusLine - $contextLines));
@@ -868,14 +871,14 @@ class File
     /**
      * Records an error with interactive fix options against a specific token in the file.
      *
-     * @param string        $error      The error message.
-     * @param int|null      $stackPtr   The stack position where the error occurred.
-     * @param string        $code       A violation code unique to the sniff message.
-     * @param array         $fixOptions Array of fix options, each with 'description' and 'newContent' keys.
-     * @param array         $data       Replacements for the error message.
-     * @param callable|null $applyFix   Optional callback to apply fixes. If null, uses default token replacement.
-     * @param int           $severity   The severity level for this error. A value of 0
-     *                                  will be converted into the default severity level.
+     * @param string                                                    $error      The error message.
+     * @param int|null                                                  $stackPtr   The stack position where the error occurred.
+     * @param string                                                    $code       A violation code unique to the sniff message.
+     * @param \PHP_CodeSniffer\Interactive\InteractiveOption[]                 $fixOptions Array of InteractiveOption objects.
+     * @param array                                                     $data       Replacements for the error message.
+     * @param \PHP_CodeSniffer\Interactive\InteractiveFixInterface|null $applyFix   Optional fixer instance. If null, uses default fixer.
+     * @param int                                                       $severity   The severity level for this error. A value of 0
+     *                                                                               will be converted into the default severity level.
      *
      * @return int|bool The user's selection (1-based) or false if not in interactive mode.
      */
@@ -885,7 +888,7 @@ class File
         string $code,
         array $fixOptions,
         array $data = [],
-        ?callable $applyFix = null,
+        ?InteractiveFixInterface $applyFix = null,
         int $severity = 0
     ) {
         if ($stackPtr === null) {
@@ -899,18 +902,15 @@ class File
         $violationKey = $this->getViolationKey($line, $column, $code);
 
         if ($applyFix === null) {
-            $applyFix = [
-                $this,
-                'applyInteractiveFix',
-            ];
+            $applyFix = new DefaultInteractiveFixer();
         }
 
-        foreach (array_keys($fixOptions) as $k) {
+        foreach ($fixOptions as $fixOption) {
             $tempFile = $this->createTempClone();
-            $applyFix($tempFile, $stackPtr, $fixOptions[$k], $data);
-            $modifiedContent           = $tempFile->fixer->getContents();
-            $fixOptions[$k]['diff']    = $this->generateDiff($this->content, $modifiedContent, $line);
-            $fixOptions[$k]['current'] = trim($this->tokens[$stackPtr]['content']);
+            $applyFix->applyFix($tempFile, $stackPtr, $fixOption, $data);
+            $modifiedContent   = $tempFile->fixer->getContents();
+            $fixOption->diff   = $this->generateDiff($this->content, $modifiedContent, $line);
+            $fixOption->current = trim($this->tokens[$stackPtr]['content']);
         }
 
         $this->interactiveFixOptions[$violationKey] = $fixOptions;
@@ -922,8 +922,8 @@ class File
 
         $recorded = $this->addError($error, $stackPtr, $code, $data, $severity, $this->interactiveMode);
         if ($recorded === true && $this->fixer->enabled === true) {
-            if ($selectedFix !== null && isset($fixOptions[$selectedFix]) && $applyFix !== null) {
-                $applyFix($this, $stackPtr, $fixOptions[$selectedFix], $data);
+            if ($selectedFix !== null && isset($fixOptions[$selectedFix])) {
+                $applyFix->applyFix($this, $stackPtr, $fixOptions[$selectedFix], $data);
             }
 
             return $selectedFix;
@@ -947,21 +947,6 @@ class File
         return $line . ':' . $column . ':' . $sniffCode;
     }
 
-
-    /**
-     * Default interactive fix application function.
-     *
-     * @param \PHP_CodeSniffer\Files\File $file      The file being fixed.
-     * @param int                         $tokenPtr  The token position to replace.
-     * @param array                       $fixOption The fix option containing replaceWith.
-     * @param array                       $data      The error message data (unused in default implementation).
-     *
-     * @return void
-     */
-    public static function applyInteractiveFix(File $file, int $tokenPtr, array $fixOption, array $data = [])
-    {
-        $file->fixer->replaceToken($tokenPtr, $fixOption['replaceWith']);
-    }
 
 
     /**
