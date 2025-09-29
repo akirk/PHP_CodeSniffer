@@ -956,7 +956,7 @@ class Runner
                                 return;
                             }
 
-                            if ($ret === 'edit') {
+                            if ($ret === 'edit' || $ret === 'ignore_line' || $ret === 'ignore_file' || $ret === 'ignore_project') {
                                 $needsReload = true;
                                 break 4;
                             }
@@ -1195,8 +1195,12 @@ class Runner
                     }
 
                 case 'i':
-                    $this->addPhpcsIgnoreToLine($file, $line, $source);
-                    echo 'Added phpcs:ignore comment to line ' . $line . PHP_EOL;
+                    $success = $file->fixer->addPhpcsIgnoreToLine($line, $source);
+                    if ($success === true) {
+                        echo 'Added phpcs:ignore comment to line ' . $line . PHP_EOL;
+                    } else {
+                        echo 'Failed to add phpcs:ignore comment to line ' . $line . PHP_EOL;
+                    }
                     echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
                     return 'ignore_line';
 
@@ -1291,48 +1295,12 @@ class Runner
         }
 
         if ($configFile === null) {
-            $configFile = 'phpcs.xml';
-            $this->createBasicPhpcsXml($configFile);
+            echo 'No phpcs.xml file found in the current directory.' . PHP_EOL;
+            return;
         }
 
         $this->addExcludeToPhpcsXml($configFile, $sniffCode);
         echo "\033[32mAdded exclude for $sniffCode to $configFile.\033[0m" . PHP_EOL;
-    }
-
-
-    /**
-     * Add a phpcs:ignore comment to a specific line.
-     *
-     * @param \PHP_CodeSniffer\Files\File $file      The file being processed.
-     * @param int                         $line      The line number to add the ignore to.
-     * @param string                      $sniffCode The sniff code to ignore.
-     *
-     * @return void
-     */
-    private function addPhpcsIgnoreToLine(File $file, int $line, string $sniffCode)
-    {
-        $content = $file->getTokensAsString(0, $file->numTokens);
-        $lines   = explode("\n", $content);
-
-        // Add phpcs:ignore comment to the violating line itself
-        $targetLine = ($line - 1);
-        // Convert to 0-based index
-        if (isset($lines[$targetLine]) === true) {
-            $currentLine = rtrim($lines[$targetLine]);
-
-            // Check if there's already a phpcs:ignore comment on this line
-            if (strpos($currentLine, 'phpcs:ignore') !== false) {
-                // Append to existing ignore comment
-                $lines[$targetLine] = $currentLine . ",$sniffCode";
-            } else {
-                // Add new ignore comment to the end of the line
-                $lines[$targetLine] = $currentLine . " // phpcs:ignore $sniffCode";
-            }
-
-            // Write the modified content back to the file
-            $newContent = implode("\n", $lines);
-            file_put_contents($file->path, $newContent);
-        }
     }
 
 
@@ -1392,36 +1360,6 @@ class Runner
         $file->process();
 
         echo "\033[32mFile reloaded and reprocessed.\033[0m" . PHP_EOL;
-    }
-
-
-    /**
-     * Create a basic phpcs.xml configuration file.
-     *
-     * @param string $filename The config file to create.
-     *
-     * @return void
-     */
-    private function createBasicPhpcsXml(string $filename)
-    {
-        $content = '<?xml version="1.0"?>
-<ruleset name="Project Coding Standard">
-    <description>Coding standard for this project</description>
-
-    <!-- Include the whole PSR-12 standard -->
-    <rule ref="PSR12"/>
-
-    <!-- Files to check -->
-    <file>.</file>
-
-    <!-- Exclude patterns -->
-    <exclude-pattern>*/vendor/*</exclude-pattern>
-    <exclude-pattern>*/node_modules/*</exclude-pattern>
-</ruleset>
-';
-
-        file_put_contents($filename, $content);
-        echo "\033[32mCreated basic phpcs.xml configuration file.\033[0m" . PHP_EOL;
     }
 
 
