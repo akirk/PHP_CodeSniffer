@@ -442,7 +442,7 @@ class File
                     ];
                 }
             } else {
-                // Highlight the focus line even if unchanged to make it stand out
+                // Highlight the focus line even if unchanged to make it stand out.
                 if ($i === $focusLine) {
                     $diff[] = [
                         'type'    => 'highlight',
@@ -460,17 +460,13 @@ class File
         }
 
         // Post-process: convert unchanged lines that appear to shift into context.
-        $changes    = true;
+        $changes = true;
         $shouldRemoveTrailingContext = false;
 
         while ($changes === true) {
             $changes = false;
             for ($i = 1; $i < count($diff); $i++) {
-                if (!isset($diff[$i])) {
-                    continue;
-                }
-
-                if (!isset($diff[($i - 1)])) {
+                if (isset($diff[$i]) === false || isset($diff[($i - 1)]) === false) {
                     continue;
                 }
 
@@ -484,25 +480,25 @@ class File
                     || ($current['type'] === 'removed' && $previous['type'] === 'added')
                 ) {
                     if (trim($current['content']) === trim($previous['content'])) {
-                        // This is just a line that shifted position, treat as context and remove the duplicate
+                        // This is just a line that shifted position, treat as context and remove the duplicate.
                         $diff[$i]['type'] = 'context';
                         unset($diff[($i - 1)]);
                         $diff    = array_values($diff);
                         $changes = true;
                         break;
-                        // Restart the loop since array indices changed
+                        // Restart the loop since array indices changed.
                     }
                 }
             }
         }
 
         // Remove unnecessary added line at the end if the previous line is context
-        // But only if this looks like a real diff (has both added and removed lines)
+        // But only if this looks like a real diff (has both added and removed lines).
         $lastIndex = (count($diff) - 1);
         if ($lastIndex > 0
             && $diff[$lastIndex]['type'] === 'added'
             && $diff[($lastIndex - 1)]['type'] === 'context'
-            && $shouldRemoveTrailingContext
+            && $shouldRemoveTrailingContext === true
         ) {
             unset($diff[$lastIndex]);
         }
@@ -921,14 +917,14 @@ class File
 
         $this->interactiveFixOptions[$violationKey] = $fixOptions;
 
-        $selectedOption = $this->selectedInteractiveFixOptions[$violationKey] ?? null;
-        if ($this->interactiveMode && false === $selectedOption) {
+        if ($this->interactiveMode === true && isset($this->selectedInteractiveFixOptions[$violationKey]) === false) {
             return false;
         }
 
         $recorded = $this->addError($error, $stackPtr, $code, $data, $severity, $this->interactiveMode);
         if ($recorded === true && $this->fixer->enabled === true) {
-            if ($selectedOption !== null && isset($fixOptions[$selectedOption])) {
+            $selectedOption = $this->selectedInteractiveFixOptions[$violationKey];
+            if ($selectedOption !== null && isset($fixOptions[$selectedOption]) === true) {
                 $fixOptions[$selectedOption]->applyFix($this, $stackPtr);
             }
 
@@ -939,6 +935,15 @@ class File
     }
 
 
+    /**
+     * Generate a unique key for a violation based on its location and code.
+     *
+     * @param int    $line   The line number of the violation.
+     * @param int    $column The column number of the violation.
+     * @param string $code   The violation code.
+     *
+     * @return string The unique violation key.
+     */
     private function getViolationKey(int $line, int $column, string $code)
     {
         $parts = explode('.', $code);
@@ -1174,9 +1179,9 @@ class File
             return false;
         }
 
-        if ($this->interactiveMode) {
+        if ($this->interactiveMode === true) {
             $violationKey = $this->getViolationKey($line, $column, $code);
-            if (isset($this->selectedInteractiveFixOptions[$violationKey]) && false === $this->selectedInteractiveFixOptions[$violationKey]) {
+            if (isset($this->selectedInteractiveFixOptions[$violationKey]) === true && $this->selectedInteractiveFixOptions[$violationKey] === false) {
                 return false;
             }
         }

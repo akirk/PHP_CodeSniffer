@@ -71,6 +71,26 @@ class LocalFile extends File
      */
     public function reloadContent()
     {
+          // Reset all error and warning data
+          $this->errors            = [];
+          $this->warnings          = [];
+          $this->errorCount        = 0;
+          $this->warningCount      = 0;
+          $this->fixableErrorCount = 0;
+          $this->fixableWarningCount = 0;
+          $this->fixedCount          = 0;
+          $this->fixedErrorCount     = 0;
+          $this->fixedWarningCount   = 0;
+
+          // Reset processing state
+          $this->numTokens = 0;
+          $this->fromCache = false;
+
+          // Reset interactive mode state
+          $this->interactiveFixOptions         = [];
+          $this->selectedInteractiveFixOptions = [];
+
+          // Reload the actual file content
         $this->setContent(file_get_contents($this->path));
     }
 

@@ -188,14 +188,14 @@ class Runner
             $this->config->explain     = false;
             $this->config->cache       = false;
             $this->config->showSources = false;
-            // Keep recordErrors true in interactive mode so we can show violation details
+            // Keep recordErrors true in interactive mode so we can show violation details.
             if ($this->config->interactive === false) {
                 $this->config->recordErrors = false;
             }
 
             $this->config->reportFile = null;
 
-            // Interactive mode settings for PHPCBF
+            // Interactive mode settings for PHPCBF.
             if ($this->config->interactive === true) {
                 $this->config->parallel     = 1;
                 $this->config->showProgress = false;
@@ -664,7 +664,7 @@ class Runner
                 if (PHP_CODESNIFFER_CBF === true) {
                     // For PHPCBF, we don't use the standard PHPCS interactive mode
                     // since it requires the "full" report which isn't available in PHPCBF
-                    // Interactive mode is handled earlier in processFile()
+                    // Interactive mode is handled earlier in processFile().
                     break;
                 }
 
@@ -934,29 +934,39 @@ class Runner
      */
     private function handlePhpcbfInteractiveMode(File $file)
     {
-        $errors   = $file->getErrors();
-        $warnings = $file->getWarnings();
+        while (true) {
+            $errors   = $file->getErrors();
+            $warnings = $file->getWarnings();
 
-        // Only show header if there are violations to process
-        if (empty($errors) && empty($warnings)) {
-            return;
-        }
+            // Only show header if there are violations to process.
+            if (count($errors) === 0 && count($warnings) === 0) {
+                return;
+            }
 
-        echo "\033[1m" . 'PHPCBF INTERACTIVE MODE - ' . basename($file->path) . "\033[0m" . PHP_EOL . PHP_EOL;
+            echo "\033[1m" . 'PHPCBF INTERACTIVE MODE - ' . basename($file->path) . "\033[0m" . PHP_EOL . PHP_EOL;
 
-        foreach (compact('errors', 'warnings') as $type => $violations) {
-            foreach ($violations as $line => $lineViolations) {
-                foreach ($lineViolations as $column => $messages) {
-                    foreach ($messages as $message) {
-                        $message['type']    = $type;
-                        $message['fixable'] = isset($message['fixable']) ? $message['fixable'] : false;
+            $needsReload = false;
+            foreach (compact('errors', 'warnings') as $type => $violations) {
+                foreach ($violations as $line => $lineViolations) {
+                    foreach ($lineViolations as $column => $messages) {
+                        foreach ($messages as $message) {
+                            $message['type'] = $type;
+                            $ret = $this->handleSingleViolation($message, $line, $column, $file);
+                            if ($ret === null || $ret === 'quit') {
+                                return;
+                            }
 
-                        $ret = $this->handleSingleViolation($message, $line, $column, $file);
-                        if ('quit' === ($ret['action'] ?? '')) {
-                            return;
+                            if ($ret === 'edit') {
+                                $needsReload = true;
+                                break 4;
+                            }
                         }
                     }
                 }
+            }
+
+            if ($needsReload === false) {
+                break;
             }
         }
     }
@@ -1005,19 +1015,44 @@ class Runner
      * @param int                            $column  The column number.
      * @param \PHP_CodeSniffer\Files\File    $file    The file being processed.
      *
-     * @return array Array with 'action' key indicating what action was taken.
+     * @return string The action taken.
      * @throws \PHP_CodeSniffer\Exceptions\DeepExitException
      */
     private function handleSingleViolation(array $message, int $line, int $column, File $file)
     {
-        $type        = isset($message['type']) ? $message['type'] : 'UNKNOWN';
-        $messageText = isset($message['message']) ? $message['message'] : 'Unknown violation';
-        $source      = isset($message['source']) ? $message['source'] : 'Unknown.Source';
-        $fixable     = isset($message['fixable']) ? $message['fixable'] : false;
-        $stackPtr    = isset($message['stackPtr']) ? $message['stackPtr'] : $this->findStackPtrAtPosition($file, $line, $column);
+        if (isset($message['type']) === true) {
+            $type = $message['type'];
+        } else {
+            $type = 'UNKNOWN';
+        }
+
+        if (isset($message['message']) === true) {
+            $messageText = $message['message'];
+        } else {
+            $messageText = 'Unknown violation';
+        }
+
+        if (isset($message['source']) === true) {
+            $source = $message['source'];
+        } else {
+            $source = 'Unknown.Source';
+        }
+
+        if (isset($message['fixable']) === true) {
+            $fixable = $message['fixable'];
+        } else {
+            $fixable = false;
+        }
+
+        if (isset($message['stackPtr']) === true) {
+            $stackPtr = $message['stackPtr'];
+        } else {
+            $stackPtr = $this->findStackPtrAtPosition($file, $line, $column);
+        }
+
         if ($stackPtr === null) {
             error_log("WARNING: Could not find stack pointer at $line:$column in file {$file->path}");
-            return ['action' => 'skip'];
+            return 'skip';
         }
 
         $input = false;
@@ -1025,8 +1060,8 @@ class Runner
         $interactiveFixOptions = $file->getInteractiveFixOptions($line, $column, $source);
         $hasInteractiveFixes   = !empty($interactiveFixOptions) && isset($interactiveFixOptions[0]);
 
-        if ($this->config->autoFirst) {
-            if ($hasInteractiveFixes) {
+        if ($this->config->autoFirst === true) {
+            if ($hasInteractiveFixes === true) {
                 $input = '1';
             } else {
                 $input = '';
@@ -1037,42 +1072,44 @@ class Runner
         echo '  ' . $messageText . PHP_EOL;
         echo '  Sniff: ' . $source . PHP_EOL;
 
-        if ($hasInteractiveFixes) {
-            echo "  \033[36m(Interactive fixes available)\033[0m" . PHP_EOL;
+        if ($hasInteractiveFixes === true) {
+            echo "  \033[36m(Interactive fixes available)\033[0m";
         } elseif ($fixable === true) {
-            echo "  \033[32m(Auto-fixable)\033[0m" . PHP_EOL;
+            echo "  \033[32m(Auto-fixable)\033[0m";
         } else {
-            echo "  \033[31m(Not auto-fixable)\033[0m" . PHP_EOL;
+            echo "  \033[31m(Not auto-fixable)\033[0m";
         }
 
+        echo PHP_EOL;
+        echo PHP_EOL;
+
         // Show context for all violation types
-        if ($hasInteractiveFixes) {
-            echo PHP_EOL . "\033[1mInteractive Fix Options:\033[0m" . PHP_EOL;
+        if ($hasInteractiveFixes === true) {
+            echo "\033[1mInteractive Fix Options:\033[0m" . PHP_EOL;
 
             foreach ($interactiveFixOptions as $index => $fixOption) {
                 $number = ($index + 1);
                 echo "  [$number] {$fixOption->getDescription()}" . PHP_EOL;
 
                 $diff = $fixOption->getDiff($stackPtr);
-                if (!empty($diff)) {
+                if (empty($diff) === false) {
                     echo $this->generateDiffDisplay($diff);
                 }
             }
-
-            echo PHP_EOL;
         } else {
-            echo PHP_EOL;
             $contextOption = new ContextOption($file, 'Context', $fixable);
             $contextOption->generateDiff($stackPtr);
             $diff = $contextOption->getDiff();
-            if (!empty($diff)) {
+            if (empty($diff) === false) {
                 echo $this->generateDiffDisplay($diff);
             }
         }
 
-        if (! $input) {
+        echo PHP_EOL;
+
+        if ($input === false) {
             echo 'Choose an action:' . PHP_EOL;
-            if ($hasInteractiveFixes) {
+            if ($hasInteractiveFixes === true) {
                 foreach ($interactiveFixOptions as $index => $fixOption) {
                     $number = ($index + 1);
                     echo "  [$number] Apply: {$fixOption->getDescription()}" . PHP_EOL;
@@ -1088,18 +1125,18 @@ class Runner
             echo '  [s] Skip this violation' . PHP_EOL;
             echo '  [q] Quit' . PHP_EOL;
 
-            if ($hasInteractiveFixes) {
+            if ($hasInteractiveFixes === true) {
                 echo "Action (default: 1 - {$interactiveFixOptions[0]->getDescription()}): ";
             } elseif ($fixable === true) {
                 echo 'Action (default: auto-fix): ';
             } else {
-                echo 'Action (default: skip): ';
+                echo 'Action (default: edit): ';
             }
         }
 
         while (true) {
-            if ($this->config->autoFirst) {
-                if ($hasInteractiveFixes) {
+            if ($this->config->autoFirst === false) {
+                if ($hasInteractiveFixes === true) {
                     $input = '1';
                 } else {
                     $input = '';
@@ -1110,41 +1147,20 @@ class Runner
 
             // Handle empty input (Enter pressed) - default behavior
             if ($input === '') {
-                if ($hasInteractiveFixes) {
+                if ($hasInteractiveFixes === true) {
                     // Default to first interactive fix option
                     echo 'Applying option 1...' . PHP_EOL;
-                    $file->setSelectedInteractiveFixOption($line, $column, $source, 0);
-                    $fixed = $file->fixer->fixFile();
-                    if ($fixed === true) {
-                        echo "\033[32mFixed!\033[0m" . PHP_EOL;
-                    } else {
-                        echo "\033[31mFailed to fix.\033[0m" . PHP_EOL;
-                    }
-
-                    echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
-                    return ['action' => 'fix'];
+                    $input = 1;
                 } elseif ($fixable === true) {
                     echo 'Auto-fixing...' . PHP_EOL;
-                    $fixed = $file->fixer->fixFile();
-                    if ($fixed === true) {
-                        echo "\033[32mFixed!\033[0m" . PHP_EOL;
-                        echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
-                        return ['action' => 'fix'];
-                    } else {
-                        echo "\033[31mFailed to fix.\033[0m" . PHP_EOL;
-                        echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
-                        return ['action' => 'skip'];
-                    }
+                    $input = 'f';
                 } else {
-                    echo 'Skipping...' . PHP_EOL;
-                    echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
-                    $file->skipInteractiveFix($line, $column, $source);
-                    return ['action' => 'skip'];
+                    $input = 'e';
                 }
             }
 
             // Check if input is a number for interactive fix selection
-            if (is_numeric($input) && isset($interactiveFixOptions[($input - 1)])) {
+            if (is_numeric($input) === true && isset($interactiveFixOptions[($input - 1)]) === true) {
                 echo 'Fixing with option ', $input, '...' . PHP_EOL;
                 $file->setSelectedInteractiveFixOption($line, $column, $source, ($input - 1));
                 $fixed = $file->fixer->fixFile();
@@ -1155,7 +1171,7 @@ class Runner
                 }
 
                 echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
-                return ['action' => 'fix'];
+                return 'fix';
             }
 
             switch (strtolower($input)) {
@@ -1166,47 +1182,47 @@ class Runner
                         if ($fixed === true) {
                             echo "\033[32mFixed!\033[0m" . PHP_EOL;
                             echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
-                            return ['action' => 'fix'];
+                            return 'fix';
                         } else {
                             echo "\033[31mFailed to fix.\033[0m" . PHP_EOL;
                             echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
-                            return ['action' => 'skip'];
+                            return 'skip';
                         }
                     } else {
                         echo "\033[31mInvalid option 'f' - this violation is not auto-fixable.\033[0m" . PHP_EOL;
                         echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
-                        return ['action' => 'skip'];
+                        return 'skip';
                     }
 
                 case 'i':
                     $this->addPhpcsIgnoreToLine($file, $line, $source);
                     echo 'Added phpcs:ignore comment to line ' . $line . PHP_EOL;
                     echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
-                    return ['action' => 'ignore_line'];
+                    return 'ignore_line';
 
                 case 'd':
                     $this->ignoreSniffInFile($source, $file);
                     echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
-                    return ['action' => 'ignore_file'];
+                    return 'ignore_file';
 
                 case 'p':
                     $this->ignoreSniffInProject($source, $file);
                     echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
-                    return ['action' => 'ignore_project'];
+                    return 'ignore_project';
 
                 case 'e':
                     $this->editFile($file, $line);
                     echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
-                    return ['action' => 'edit'];
+                    return 'edit';
 
                 case 's':
                     $file->skipInteractiveFix($line, $column, $source);
                     echo 'Skipping...' . PHP_EOL;
                     echo PHP_EOL . str_repeat('-', 80) . PHP_EOL;
-                    return ['action' => 'skip'];
+                    return 'skip';
 
                 case 'q':
-                    return ['action' => 'quit'];
+                    return 'quit';
 
                 default:
                     echo 'Invalid option. Try again: ' ;
@@ -1230,7 +1246,7 @@ class Runner
 
         // Add ignore comment at the top of the file after the opening PHP tag
         $ignoreComment = '// phpcs:disable ' . $sniffCode . ' -- Interactive ignore';
-        if (isset($lines[0]) && strpos($lines[0], '<?php') === 0) {
+        if (isset($lines[0]) === true && strpos($lines[0], '<?php') === 0) {
             array_splice($lines, 1, 0, $ignoreComment);
         } else {
             array_unshift($lines, $ignoreComment);
@@ -1301,7 +1317,7 @@ class Runner
         // Add phpcs:ignore comment to the violating line itself
         $targetLine = ($line - 1);
         // Convert to 0-based index
-        if (isset($lines[$targetLine])) {
+        if (isset($lines[$targetLine]) === true) {
             $currentLine = rtrim($lines[$targetLine]);
 
             // Check if there's already a phpcs:ignore comment on this line
@@ -1331,8 +1347,6 @@ class Runner
     private function editFile(File $file, int $line)
     {
         // Apply all fixes made so far and write to file so user edits the current state
-        $file->fixer->enabled = true;
-        $file->fixer->fixFile();
         $fixedContent = $file->fixer->getContents();
         file_put_contents($file->path, $fixedContent);
 
@@ -1353,7 +1367,7 @@ class Runner
 
         // Add line number support for common editors:
         $editorName = strtok(basename($editor), ' ');
-        if (in_array($editorName, ['nano', 'vim', 'vi', 'nvim'], true)) {
+        if (in_array($editorName, ['nano', 'vim', 'vi', 'nvim'], true) === true) {
             $command = escapeshellcmd($editor) . ' +' . $line . ' ' . escapeshellarg($file->path);
         } elseif ($editorName === 'emacs') {
             $command = escapeshellcmd($editor) . ' +' . $line . ' ' . escapeshellarg($file->path);
@@ -1429,9 +1443,9 @@ class Runner
 
         // Check if exclude already exists
         foreach ($xml->rule as $rule) {
-            if (isset($rule['ref']) && (string) $rule['ref'] === $sniffCode) {
+            if (isset($rule['ref']) === true && (string) $rule['ref'] === $sniffCode) {
                 foreach ($rule->exclude as $exclude) {
-                    if (isset($exclude['name']) && (string) $exclude['name'] === $sniffCode) {
+                    if (isset($exclude['name']) === true && (string) $exclude['name'] === $sniffCode) {
                         echo "\033[33mSniff $sniffCode is already excluded.\033[0m" . PHP_EOL;
                         return;
                     }
@@ -1469,7 +1483,7 @@ class Runner
         for ($i = 0; $i < $file->numTokens; $i++) {
             if ($tokens[$i]['line'] === $line && $tokens[$i]['column'] <= $column) {
                 // Check if the next token is also on the same line and closer to the column
-                if (isset($tokens[($i + 1)])
+                if (isset($tokens[($i + 1)]) === true
                     && $tokens[($i + 1)]['line'] === $line
                     && $tokens[($i + 1)]['column'] <= $column
                 ) {
@@ -1480,6 +1494,6 @@ class Runner
             }
         }
 
-        return $file->numTokens - 1;
+        return ($file->numTokens - 1);
     }
 }
