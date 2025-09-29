@@ -54,11 +54,6 @@ class ValidClassNameSniff implements Sniff
         if (preg_match('|^[A-Z]|', $name) === 0) {
             $error = '%s name must begin with a capital letter';
 
-            $preview = '';
-            while ( $stackPtr < $className) {
-                $preview .= $tokens[$stackPtr++]['content'];
-            }
-
             $fixOptions = [
                 [
                     'description' => "Suggestion",
@@ -101,11 +96,6 @@ class ValidClassNameSniff implements Sniff
                 $error   = '%s name is not valid; consider %s instead';
                 $data    = $errorData;
                 $data[]  = $newName;
-
-                $preview = '';
-                while ( $stackPtr < $className) {
-                    $preview .= $tokens[$stackPtr++]['content'];
-                }
 
                 $fixOptions = [
                     [
