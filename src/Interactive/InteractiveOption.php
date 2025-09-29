@@ -10,7 +10,6 @@
 namespace PHP_CodeSniffer\Interactive;
 
 use PHP_CodeSniffer\Files\File;
-use PHP_CodeSniffer\Files\DummyFile;
 
 /**
  * Abstract base class for interactive options that can apply themselves.
@@ -68,17 +67,23 @@ abstract class InteractiveOption
     /**
      * Get the diff preview for this fix.
      *
+     * @return array|null
+     */
+    public function getDiff()
+    {
+        return $this->diff;
+    }
+
+
+    /**
+     * Get the diff preview for this fix.
+     *
      * @param int   $stackPtr The token position to fix.
      *
      * @return array The diff preview.
      */
-    public function getDiff(int $stackPtr)
+    public function generateDiff(int $stackPtr)
     {
-        // Return cached diff if already generated
-        if ($this->diff !== null) {
-            return $this->diff;
-        }
-
         $tempFile = $this->file->createTempClone();
         $this->applyFix($tempFile, $stackPtr);
         $modifiedContent = $tempFile->fixer->getContents();
@@ -87,8 +92,6 @@ abstract class InteractiveOption
 
         $tempFile->fixer = null;
         unset($tempFile);
-
-        return $this->diff;
     }
 
 

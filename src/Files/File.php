@@ -876,7 +876,6 @@ class File
      * @param string                                                    $code       A violation code unique to the sniff message.
      * @param \PHP_CodeSniffer\Interactive\InteractiveOption[]                 $fixOptions Array of InteractiveOption objects.
      * @param array                                                     $data       Replacements for the error message.
-     * @param \PHP_CodeSniffer\Interactive\InteractiveFixInterface|null $applyFix   Optional fixer instance. If null, uses default fixer.
      * @param int                                                       $severity   The severity level for this error. A value of 0
      *                                                                               will be converted into the default severity level.
      *
@@ -888,7 +887,6 @@ class File
         string $code,
         array $fixOptions,
         array $data = [],
-        ?InteractiveFixInterface $applyFix = null,
         int $severity = 0
     ) {
         if ($stackPtr === null) {
@@ -900,33 +898,24 @@ class File
         }
 
         $violationKey = $this->getViolationKey($line, $column, $code);
-
-        if ($applyFix === null) {
-            $applyFix = new DefaultInteractiveFixer();
-        }
-
-        foreach ($fixOptions as $fixOption) {
-            $tempFile = $this->createTempClone();
-            $applyFix->applyFix($tempFile, $stackPtr, $fixOption, $data);
-            $modifiedContent   = $tempFile->fixer->getContents();
-            $fixOption->diff   = $this->generateDiff($this->content, $modifiedContent, $line);
-            $fixOption->current = trim($this->tokens[$stackPtr]['content']);
+        foreach ($fixOptions as $option) {
+            $option->generateDiff($stackPtr);
         }
 
         $this->interactiveFixOptions[$violationKey] = $fixOptions;
 
-        $selectedFix = $this->selectedInteractiveFixOptions[$violationKey] ?? null;
-        if ($this->interactiveMode && false === $selectedFix) {
+        $selectedOption = $this->selectedInteractiveFixOptions[$violationKey] ?? null;
+        if ($this->interactiveMode && false === $selectedOption) {
             return false;
         }
 
         $recorded = $this->addError($error, $stackPtr, $code, $data, $severity, $this->interactiveMode);
         if ($recorded === true && $this->fixer->enabled === true) {
-            if ($selectedFix !== null && isset($fixOptions[$selectedFix])) {
-                $applyFix->applyFix($this, $stackPtr, $fixOptions[$selectedFix], $data);
+            if ($selectedOption !== null && isset($fixOptions[$selectedOption])) {
+                $fixOptions[$selectedOption]->applyFix($this, $stackPtr);
             }
 
-            return $selectedFix;
+            return $selectedOption;
         }
 
         return false;

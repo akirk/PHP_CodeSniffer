@@ -1010,11 +1010,12 @@ class Runner
         $messageText = isset($message['message']) ? $message['message'] : 'Unknown violation';
         $source      = isset($message['source']) ? $message['source'] : 'Unknown.Source';
         $fixable     = isset($message['fixable']) ? $message['fixable'] : false;
+        $stackPtr    = isset($message['stackPtr']) ? $message['stackPtr'] : null;
 
         $input = false;
 
         $interactiveFixOptions = $file->getInteractiveFixOptions($line, $column, $source);
-        $hasInteractiveFixes   = !empty($interactiveFixOptions);
+        $hasInteractiveFixes   = !empty($interactiveFixOptions) && isset($interactiveFixOptions[0]);
 
         if ($this->config->autoFirst) {
             if ($hasInteractiveFixes) {
@@ -1042,10 +1043,11 @@ class Runner
 
             foreach ($interactiveFixOptions as $index => $fixOption) {
                 $number = ($index + 1);
-                echo "  [$number] {$fixOption['description']}" . PHP_EOL;
+                echo "  [$number] {$fixOption->getDescription()}" . PHP_EOL;
 
-                if (isset($fixOption['diff'])) {
-                    echo $this->generateDiffDisplay($fixOption['diff']);
+                $diff = $fixOption->getDiff($stackPtr);
+                if (!empty($diff)) {
+                    echo $this->generateDiffDisplay($diff);
                 }
             }
 
@@ -1057,7 +1059,7 @@ class Runner
             if ($hasInteractiveFixes) {
                 foreach ($interactiveFixOptions as $index => $fixOption) {
                     $number = ($index + 1);
-                    echo "  [$number] Apply: {$fixOption['description']}" . PHP_EOL;
+                    echo "  [$number] Apply: {$fixOption->getDescription()}" . PHP_EOL;
                 }
             } elseif ($fixable === true) {
                 echo '  [f] Fix automatically' . PHP_EOL;
@@ -1071,8 +1073,7 @@ class Runner
             echo '  [q] Quit' . PHP_EOL;
 
             if ($hasInteractiveFixes) {
-                $defaultDescription = ($interactiveFixOptions[0]['description'] ?? '1');
-                echo "Action (default: 1 - {$defaultDescription}): ";
+                echo "Action (default: 1 - {$interactiveFixOptions[0]->getDescription()}): ";
             } elseif ($fixable === true) {
                 echo 'Action (default: auto-fix): ';
             } else {
