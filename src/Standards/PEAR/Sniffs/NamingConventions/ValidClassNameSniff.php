@@ -62,7 +62,7 @@ class ValidClassNameSniff implements Sniff
             $fixOptions = [
                 [
                     'description' => "Suggestion",
-                    'newContent' => $errorData[0],
+                    'replaceWith' => $errorData[0],
                 ],
             ];
             $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'StartWithCapital', $errorData, $fixOptions);
@@ -110,7 +110,7 @@ class ValidClassNameSniff implements Sniff
                 $fixOptions = [
                     [
                         'description' => "Suggestion",
-                        'newContent' => $newName,
+                        'replaceWith' => $newName,
                     ],
                 ];
                 $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'Invalid', $data, $fixOptions);

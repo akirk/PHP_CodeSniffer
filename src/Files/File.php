@@ -381,7 +381,7 @@ class File
 
 
     /**
-     * Generate a real diff between original and modified content.
+     * Generate a diff between original and modified content.
      *
      * @param string $originalContent The original file content.
      * @param string $modifiedContent The modified file content.
@@ -390,7 +390,7 @@ class File
      *
      * @return array Array with diff information for display.
      */
-    private function generateRealDiff(string $originalContent, string $modifiedContent, int $focusLine, int $contextLines = 2)
+    private function generateDiff(string $originalContent, string $modifiedContent, int $focusLine, int $contextLines = 2)
     {
         $originalLines = explode("\n", $originalContent);
         $modifiedLines = explode("\n", $modifiedContent);
@@ -866,27 +866,15 @@ class File
 
         $violationKey = $this->getViolationKey( $line, $column, $code );
 
-        // Create default apply fix callback if none provided
         if ($applyFix === null) {
-            $applyFix = function(DummyFile $file, int $tokenPtr, string $newContent) {
-                $file->fixer->replaceToken($tokenPtr, $newContent);
-            };
+            $applyFix = [$this, 'applyInteractiveFix'];
         }
 
-        // Generate real diffs for each fix option
         foreach ( array_keys( $fixOptions ) as $k ) {
-            // Create temporary clone and apply the fix
             $tempFile = $this->createTempClone();
-            $newContent = $fixOptions[$k]['newContent'] ?? '';
-
-            // Apply the fix to the temporary file
-            $applyFix($tempFile, $stackPtr, $newContent);
-
-            // Get the modified content by applying all the fixer's changes
+            $applyFix($tempFile, $stackPtr, $fixOptions[$k]);
             $modifiedContent = $tempFile->fixer->getContents();
-
-            // Generate diff between original and modified content
-            $fixOptions[$k]['realDiff'] = $this->generateRealDiff($this->content, $modifiedContent, $line);
+            $fixOptions[$k]['diff'] = $this->generateDiff($this->content, $modifiedContent, $line);
             $fixOptions[$k]['current'] = trim( $this->tokens[$stackPtr]['content'] );
         }
 
@@ -894,11 +882,13 @@ class File
 
         $selectedFix = $this->selectedInteractiveFixOptions[$violationKey] ?? null;
         if ( $this->interactiveMode && false === $selectedFix ) {
-            // Don't report a skipped error anymore.
             return false;
         }
         $recorded = $this->addError($error, $stackPtr, $code, $data, $severity, $this->interactiveMode);
         if ($recorded === true && $this->fixer->enabled === true) {
+            if ($selectedFix !== null && isset($fixOptions[$selectedFix]) && $applyFix !== null) {
+                $applyFix($this, $stackPtr, $fixOptions[$selectedFix]);
+            }
             return $selectedFix;
         }
 
@@ -918,6 +908,19 @@ class File
         return $line . ':' . $column . ':' . $sniffCode;
     }
 
+    /**
+     * Default interactive fix application function.
+     *
+     * @param \PHP_CodeSniffer\Files\File $file      The file being fixed.
+     * @param int                         $tokenPtr  The token position to replace.
+     * @param array                       $fixOption The fix option containing replaceWith.
+     *
+     * @return void
+     */
+    public static function applyInteractiveFix(File $file, int $tokenPtr, array $fixOption)
+    {
+        $file->fixer->replaceToken($tokenPtr, $fixOption['replaceWith']);
+    }
 
     /**
      * Get interactive fix options for a specific violation.

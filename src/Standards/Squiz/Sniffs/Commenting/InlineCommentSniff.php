@@ -235,7 +235,7 @@ class InlineCommentSniff implements Sniff
             $fixOptions = [
                 [
                     'description' => "Suggestion",
-                    'newContent' => '// ' . ucfirst( $commentText ) . PHP_EOL,
+                    'replaceWith' => '// ' . ucfirst( $commentText ) . PHP_EOL,
                 ],
             ];
             $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'NotCapital', [], $fixOptions);
@@ -258,19 +258,19 @@ class InlineCommentSniff implements Sniff
                 $fixOptions = [
                     [
                         'description' => 'Add period (.)',
-                        'newContent' => '// ' . rtrim($commentText) . '.' . PHP_EOL,
+                        'replaceWith' => '// ' . rtrim($commentText) . '.' . PHP_EOL,
                     ],
                     [
                         'description' => 'Add exclamation mark (!)',
-                        'newContent' => '// ' . rtrim($commentText) . '!' . PHP_EOL,
+                        'replaceWith' => '// ' . rtrim($commentText) . '!' . PHP_EOL,
                     ],
                     [
                         'description' => 'Add question mark (?)',
-                        'newContent' => '// ' . rtrim($commentText) . '?' . PHP_EOL,
+                        'replaceWith' => '// ' . rtrim($commentText) . '?' . PHP_EOL,
                     ],
                     [
                         'description' => 'Remove comment',
-                        'newContent' => '',
+                        'replaceWith' => '',
                     ],
                 ];
                 $phpcsFile->addInteractivelyFixableError($error, $lastCommentToken, 'InvalidEndChar', $data, $fixOptions);
