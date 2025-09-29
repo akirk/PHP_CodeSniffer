@@ -1126,7 +1126,7 @@ class Runner
             echo '  [q] Quit' . PHP_EOL;
 
             if ($hasInteractiveFixes === true) {
-                echo "Action (default: 1 - {$interactiveFixOptions[0]->getDescription()}): ";
+                echo "Action (default: 1 \"{$interactiveFixOptions[0]->getDescription()}\"): ";
             } elseif ($fixable === true) {
                 echo 'Action (default: auto-fix): ';
             } else {
