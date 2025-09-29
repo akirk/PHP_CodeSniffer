@@ -71,7 +71,6 @@ class LocalFile extends File
      */
     public function reloadContent()
     {
-        var_dump( file_get_contents($this->path) );
         $this->setContent(file_get_contents($this->path));
     }
 
