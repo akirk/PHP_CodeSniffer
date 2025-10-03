@@ -813,6 +813,64 @@ class Fixer
 
 
     /**
+     * Add a phpcs:ignore comment to a specific line.
+     *
+     * @param int    $line      The line number to add the ignore comment to.
+     * @param string $sniffCode The sniff code to ignore.
+     *
+     * @return bool If the change was accepted.
+     */
+    public function addPhpcsIgnoreToLine(int $line, string $sniffCode)
+    {
+        $content = $this->getContents();
+        $lines   = explode($this->currentFile->eolChar, $content);
+
+        // Check if the target line exists.
+        if (isset($lines[($line - 1)]) === false) {
+            return false;
+        }
+
+        $targetLine = $lines[($line - 1)];
+
+        // Check if there's already a phpcs:ignore comment on this line.
+        if (strpos(strtolower($targetLine), 'phpcs:ignore') !== false) {
+            // Append the sniff code to the existing ignore comment.
+            $lines[($line - 1)] = $targetLine . ',' . $sniffCode;
+        } elseif ($line > 1 && strpos(strtolower($lines[($line - 2)]), 'phpcs:ignore') !== false) {
+            // Append to existing ignore comment on the previous line.
+            $lines[($line - 2)] = $lines[($line - 2)] . ',' . $sniffCode;
+        } else {
+            // Add phpcs:ignore comment to the end of the target line.
+            $lines[($line - 1)] = rtrim($targetLine) . ' // phpcs:ignore ' . $sniffCode;
+        }
+
+        // Reconstruct content and update both the file and internal tokens.
+        $newContent = implode($this->currentFile->eolChar, $lines);
+
+        // Write the changes directly to the file on disk so they persist through reloadContent().
+        if ($this->currentFile instanceof \PHP_CodeSniffer\Files\LocalFile) {
+            file_put_contents($this->currentFile->getFilename(), $newContent);
+        }
+
+        $this->currentFile->setContent($newContent);
+        $this->currentFile->process();
+
+        // Update the internal tokens array to reflect the changes.
+        $newTokens    = $this->currentFile->getTokens();
+        $this->tokens = [];
+        foreach ($newTokens as $index => $token) {
+            if (isset($token['orig_content']) === true) {
+                $this->tokens[$index] = $token['orig_content'];
+            } else {
+                $this->tokens[$index] = $token['content'];
+            }
+        }
+
+        return true;
+    }
+
+
+    /**
      * Get the sniff code for the current sniff or the class name if the passed class is not a sniff.
      *
      * @param string $className Class name.

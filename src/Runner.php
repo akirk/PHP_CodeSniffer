@@ -1056,7 +1056,7 @@ class Runner
         }
 
         // Prompt for action.
-        echo "  [s]kip, [q]uit";
+        echo "  [i]gnore line, [s]kip, [q]uit";
         if ($fixOptionsData !== null) {
             echo ", or enter number to apply fix";
         }
@@ -1066,6 +1066,16 @@ class Runner
         $input = trim(fgets(STDIN));
 
         switch ($input) {
+            case 'i':
+                $success = $file->fixer->addPhpcsIgnoreToLine($line, $source);
+                if ($success === true) {
+                    echo "\033[32mAdded phpcs:ignore comment to line {$line}\033[0m" . PHP_EOL;
+                } else {
+                    echo "\033[31mFailed to add phpcs:ignore comment\033[0m" . PHP_EOL;
+                }
+
+                return 'needs_reload';
+
             case 's':
                 if ($fixOptionsData !== null) {
                     $file->skipInteractiveFix($line, $column, $source);
