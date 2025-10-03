@@ -1056,7 +1056,7 @@ class Runner
         }
 
         // Prompt for action.
-        echo "  [s]kip, [q]uit";
+        echo "  [p]roject-wide disable, [s]kip, [q]uit";
         if ($fixOptionsData !== null) {
             echo ", or enter number to apply fix";
         }
@@ -1066,6 +1066,10 @@ class Runner
         $input = trim(fgets(STDIN));
 
         switch ($input) {
+            case 'p':
+                $this->ignoreSniffInProject($source, $file);
+                return null;
+
             case 's':
                 if ($fixOptionsData !== null) {
                     $file->skipInteractiveFix($line, $column, $source);
@@ -1096,5 +1100,83 @@ class Runner
                 echo "Invalid choice. Skipping." . PHP_EOL;
                 return 'skip';
         }
+    }
+
+
+    /**
+     * Add ignore rule for a sniff in the project configuration.
+     *
+     * @param string                      $sniffCode The sniff code to ignore.
+     * @param \PHP_CodeSniffer\Files\File $file      The file being processed.
+     *
+     * @return void
+     */
+    private function ignoreSniffInProject(string $sniffCode, File $file)
+    {
+        $configFiles = [
+            'phpcs.xml',
+            'phpcs.xml.dist',
+            '.phpcs.xml',
+            '.phpcs.xml.dist',
+        ];
+        $configFile  = null;
+
+        // Find existing config file.
+        foreach ($configFiles as $configFileName) {
+            if (file_exists($configFileName) === true) {
+                $configFile = $configFileName;
+                break;
+            }
+        }
+
+        if ($configFile === null) {
+            echo 'No phpcs.xml file found in the current directory.' . PHP_EOL;
+            return;
+        }
+
+        $this->addExcludeToPhpcsXml($configFile, $sniffCode);
+        echo "\033[32mAdded exclude for {$sniffCode} to {$configFile}.\033[0m" . PHP_EOL;
+    }
+
+
+    /**
+     * Add an exclude rule to phpcs.xml.
+     *
+     * @param string $configFile The config file to modify.
+     * @param string $sniffCode  The sniff code to exclude.
+     *
+     * @return void
+     */
+    private function addExcludeToPhpcsXml(string $configFile, string $sniffCode)
+    {
+        $xml = simplexml_load_file($configFile);
+        if ($xml === false) {
+            echo "\033[31mFailed to load {$configFile}.\033[0m" . PHP_EOL;
+            return;
+        }
+
+        // Check if exclude already exists.
+        foreach ($xml->rule as $rule) {
+            if (isset($rule['ref']) === true && (string) $rule['ref'] === $sniffCode) {
+                foreach ($rule->exclude as $exclude) {
+                    if (isset($exclude['name']) === true && (string) $exclude['name'] === $sniffCode) {
+                        echo "\033[33mSniff {$sniffCode} is already excluded.\033[0m" . PHP_EOL;
+                        return;
+                    }
+                }
+            }
+        }
+
+        // Add new exclude rule.
+        $rule = $xml->addChild('rule');
+        $rule->addAttribute('ref', $sniffCode);
+        $exclude = $rule->addChild('exclude');
+        $exclude->addAttribute('name', $sniffCode);
+
+        // Format and save.
+        $dom = new \DOMDocument('1.0', 'UTF-8');
+        $dom->formatOutput = true;
+        $dom->loadXML($xml->asXML());
+        $dom->save($configFile);
     }
 }
