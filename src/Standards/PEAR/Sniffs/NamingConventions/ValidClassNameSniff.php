@@ -11,6 +11,7 @@
 namespace PHP_CodeSniffer\Standards\PEAR\Sniffs\NamingConventions;
 
 use PHP_CodeSniffer\Files\File;
+use PHP_CodeSniffer\Interactive\ReplaceOption;
 use PHP_CodeSniffer\Sniffs\Sniff;
 
 class ValidClassNameSniff implements Sniff
@@ -48,12 +49,14 @@ class ValidClassNameSniff implements Sniff
 
         $className = $phpcsFile->findNext(T_STRING, $stackPtr);
         $name      = trim($tokens[$className]['content']);
-        $errorData = [ucfirst($tokens[$stackPtr]['content'])];
+        $errorData = [ucfirst($tokens[$className]['content'])];
 
         // Make sure the first letter is a capital.
         if (preg_match('|^[A-Z]|', $name) === 0) {
             $error = '%s name must begin with a capital letter';
-            $phpcsFile->addError($error, $stackPtr, 'StartWithCapital', $errorData);
+
+            $fixOptions = [new ReplaceOption($phpcsFile, 'Capitalize first letter', ucfirst($name))];
+            $phpcsFile->addInteractivelyFixableError($error, $className, 'StartWithCapital', $fixOptions, $errorData);
         }
 
         // Check that each new word starts with a capital as well, but don't
@@ -88,7 +91,9 @@ class ValidClassNameSniff implements Sniff
                 $error   = '%s name is not valid; consider %s instead';
                 $data    = $errorData;
                 $data[]  = $newName;
-                $phpcsFile->addError($error, $stackPtr, 'Invalid', $data);
+
+                $fixOptions = [new ReplaceOption($phpcsFile, 'Use suggested name', $newName)];
+                $phpcsFile->addInteractivelyFixableError($error, $className, 'Invalid', $fixOptions, $data);
             }
         }
     }
