@@ -20,6 +20,7 @@ use PHP_CodeSniffer\Exceptions\RuntimeException;
 use PHP_CodeSniffer\Files\DummyFile;
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Files\FileList;
+use PHP_CodeSniffer\Interactive\ContextOption;
 use PHP_CodeSniffer\Util\Cache;
 use PHP_CodeSniffer\Util\Common;
 use PHP_CodeSniffer\Util\ExitCode;
@@ -183,13 +184,22 @@ class Runner
             }
 
             // Override some of the command line settings that might break the fixes.
-            $this->config->generator    = null;
-            $this->config->explain      = false;
-            $this->config->interactive  = false;
-            $this->config->cache        = false;
-            $this->config->showSources  = false;
-            $this->config->recordErrors = false;
-            $this->config->reportFile   = null;
+            $this->config->generator   = null;
+            $this->config->explain     = false;
+            $this->config->cache       = false;
+            $this->config->showSources = false;
+            // Keep recordErrors true in interactive mode so we can show violation details.
+            if ($this->config->interactive === false) {
+                $this->config->recordErrors = false;
+            }
+
+            $this->config->reportFile = null;
+
+            // Interactive mode settings for PHPCBF.
+            if ($this->config->interactive === true) {
+                $this->config->parallel     = 1;
+                $this->config->showProgress = false;
+            }
 
             // Only use the "Cbf" report, but allow for the Performance report as well.
             $originalReports = array_change_key_case($this->config->reports, CASE_LOWER);
@@ -565,6 +575,16 @@ class Runner
         }
 
         try {
+            if ($this->config->interactive === true && PHP_CODESNIFFER_CBF === true) {
+                // In PHPCBF interactive mode, we handle interaction inside processFile()
+                // because we need to do it before fixing.
+                $file->setInteractiveMode(true);
+                $file->process();
+                $this->handlePhpcbfInteractiveMode($file);
+                $file->ruleset->populateTokenListeners();
+                $file->reloadContent();
+            }
+
             $file->process();
 
             if (PHP_CODESNIFFER_VERBOSITY > 0) {
@@ -628,7 +648,7 @@ class Runner
 
         if ($this->config->interactive === true) {
             /*
-                Running interactively.
+                Running interactively in PHPCS.
                 Print the error report for the current file and then wait for user input.
             */
 
@@ -639,6 +659,13 @@ class Runner
                 $numErrors = ($file->getErrorCount() + $file->getWarningCount());
                 if ($numErrors === 0) {
                     continue;
+                }
+
+                if (PHP_CODESNIFFER_CBF === true) {
+                    // For PHPCBF, we don't use the standard PHPCS interactive mode
+                    // since it requires the "full" report which isn't available in PHPCBF
+                    // Interactive mode is handled earlier in processFile().
+                    break;
                 }
 
                 $this->reporter->printReport('full');
@@ -894,5 +921,180 @@ class Runner
                 }
             }
         );
+    }
+
+
+    /**
+     * Handle PHPCBF interactive mode for a single file.
+     *
+     * @param \PHP_CodeSniffer\Files\File $file The file being processed.
+     *
+     * @return void
+     * @throws \PHP_CodeSniffer\Exceptions\DeepExitException
+     */
+    private function handlePhpcbfInteractiveMode(File $file)
+    {
+        while (true) {
+            $errors   = $file->getErrors();
+            $warnings = $file->getWarnings();
+
+            // Only show header if there are violations to process.
+            if (count($errors) === 0 && count($warnings) === 0) {
+                return;
+            }
+
+            echo "\033[1m" . 'PHPCBF INTERACTIVE MODE - ' . basename($file->path) . "\033[0m" . PHP_EOL . PHP_EOL;
+
+            $needsReload = false;
+            foreach (compact('errors', 'warnings') as $type => $violations) {
+                foreach ($violations as $line => $lineViolations) {
+                    foreach ($lineViolations as $column => $messages) {
+                        foreach ($messages as $message) {
+                            $message['type'] = $type;
+                            $ret = $this->handleSingleViolation($message, $line, $column, $file);
+                            if ($ret === null || $ret === 'quit') {
+                                return;
+                            }
+
+                            if ($ret === 'needs_reload') {
+                                $needsReload = true;
+                                break 4;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if ($needsReload === false) {
+                break;
+            }
+        }
+    }
+
+
+    /**
+     * Generate a contextual diff display for a fix option using real diff data.
+     *
+     * @param array $diff The diff data generated by test-applying the fix.
+     *
+     * @return string The formatted diff output.
+     */
+    private function generateDiffDisplay(array $diff)
+    {
+        $output = '';
+
+        foreach ($diff as $diffLine) {
+            $lineNumber = str_pad((string) $diffLine['lineNum'], 3, ' ', STR_PAD_LEFT);
+            $content    = rtrim($diffLine['content']);
+
+            switch ($diffLine['type']) {
+                case 'removed':
+                    $output .= "      \033[31m{$lineNumber}- {$content}\033[0m" . PHP_EOL;
+                    break;
+                case 'added':
+                    $output .= "      \033[32m{$lineNumber}+ {$content}\033[0m" . PHP_EOL;
+                    break;
+                case 'highlight':
+                    $output .= "      \033[33m{$lineNumber}> {$content}\033[0m" . PHP_EOL;
+                    break;
+                case 'context':
+                    $output .= "      \033[90m{$lineNumber}  {$content}\033[0m" . PHP_EOL;
+                    break;
+            }
+        }
+
+        return $output;
+    }
+
+
+    /**
+     * Handle a single violation in PHPCBF interactive mode.
+     *
+     * @param array<string, string|int|bool> $message The violation message data.
+     * @param int                            $line    The line number.
+     * @param int                            $column  The column number.
+     * @param \PHP_CodeSniffer\Files\File    $file    The file being processed.
+     *
+     * @return string|null The action taken.
+     * @throws \PHP_CodeSniffer\Exceptions\DeepExitException
+     */
+    private function handleSingleViolation(array $message, int $line, int $column, File $file)
+    {
+        $type        = ($message['type'] ?? 'UNKNOWN');
+        $messageText = ($message['message'] ?? 'Unknown violation');
+        $source      = ($message['source'] ?? 'Unknown.Source');
+
+        echo "\033[33m" . strtoupper($type) . "\033[0m on line $line, column $column" . PHP_EOL;
+        echo "  Source: $source" . PHP_EOL;
+        echo "  Message: $messageText" . PHP_EOL . PHP_EOL;
+
+        // Get interactive fix options if available.
+        $fixOptionsData = $file->getInteractiveFixOptions($line, $column, $source);
+
+        if ($fixOptionsData !== null) {
+            $stackPtr   = $fixOptionsData['stackPtr'];
+            $fixOptions = $fixOptionsData['fixOptions'];
+
+            // Generate diffs for all fix options.
+            foreach ($fixOptions as $option) {
+                $option->generateDiff($stackPtr);
+            }
+
+            // Display fix options.
+            echo "  Available fixes:" . PHP_EOL;
+            foreach ($fixOptions as $index => $option) {
+                $choiceNum = ($index + 1);
+                echo "    [$choiceNum] " . $option->getDescription() . PHP_EOL;
+
+                $diff = $option->getDiff();
+                if ($diff !== null && count($diff) > 0) {
+                    echo $this->generateDiffDisplay($diff);
+                }
+            }
+
+            echo PHP_EOL;
+        }
+
+        // Prompt for action.
+        echo "  [s]kip, [q]uit";
+        if ($fixOptionsData !== null) {
+            echo ", or enter number to apply fix";
+        }
+
+        echo ": ";
+
+        $input = trim(fgets(STDIN));
+
+        switch ($input) {
+            case 's':
+                if ($fixOptionsData !== null) {
+                    $file->skipInteractiveFix($line, $column, $source);
+                }
+
+                return 'skip';
+
+            case 'q':
+                throw new DeepExitException('', 0);
+
+            default:
+                if ($fixOptionsData !== null && is_numeric($input)) {
+                    $selectedIndex = ((int) $input - 1);
+                    $fixOptions    = $fixOptionsData['fixOptions'];
+
+                    if (isset($fixOptions[$selectedIndex]) === true) {
+                        $file->setSelectedInteractiveFixOption($line, $column, $source, $selectedIndex);
+                        $selectedOption = $fixOptions[$selectedIndex];
+                        $stackPtr       = $fixOptionsData['stackPtr'];
+
+                        $selectedOption->applyFix($file, $stackPtr);
+
+                        echo "\033[32mFix applied!\033[0m" . PHP_EOL . PHP_EOL;
+                        return 'needs_reload';
+                    }
+                }
+
+                echo "Invalid choice. Skipping." . PHP_EOL;
+                return 'skip';
+        }
     }
 }
