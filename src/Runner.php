@@ -1056,7 +1056,7 @@ class Runner
         }
 
         // Prompt for action.
-        echo "  [s]kip, [q]uit";
+        echo "  [d]isable in file, [s]kip, [q]uit";
         if ($fixOptionsData !== null) {
             echo ", or enter number to apply fix";
         }
@@ -1066,6 +1066,10 @@ class Runner
         $input = trim(fgets(STDIN));
 
         switch ($input) {
+            case 'd':
+                $this->ignoreSniffInFile($source, $file);
+                return 'needs_reload';
+
             case 's':
                 if ($fixOptionsData !== null) {
                     $file->skipInteractiveFix($line, $column, $source);
@@ -1096,5 +1100,38 @@ class Runner
                 echo "Invalid choice. Skipping." . PHP_EOL;
                 return 'skip';
         }
+    }
+
+
+    /**
+     * Add ignore comment for a sniff in the current file.
+     *
+     * @param string                      $sniffCode The sniff code to ignore.
+     * @param \PHP_CodeSniffer\Files\File $file      The file being processed.
+     *
+     * @return void
+     */
+    private function ignoreSniffInFile(string $sniffCode, File $file)
+    {
+        $content = file_get_contents($file->path);
+        $lines   = explode($file->eolChar, $content);
+
+        // Add ignore comment at the top of the file after the opening PHP tag.
+        $ignoreComment = '// phpcs:disable ' . $sniffCode . ' -- Interactive ignore';
+        if (isset($lines[0]) === true && strpos($lines[0], '<?php') === 0) {
+            array_splice($lines, 1, 0, $ignoreComment);
+        } else {
+            array_unshift($lines, $ignoreComment);
+        }
+
+        $newContent = implode($file->eolChar, $lines);
+        file_put_contents($file->path, $newContent);
+
+        echo "\033[32mAdded ignore for {$sniffCode} to this file.\033[0m" . PHP_EOL;
+
+        // Reload the file.
+        $file->reloadContent();
+        $file->ruleset->populateTokenListeners();
+        $file->process();
     }
 }
