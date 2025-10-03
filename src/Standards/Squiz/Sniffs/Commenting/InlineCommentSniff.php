@@ -11,6 +11,7 @@
 namespace PHP_CodeSniffer\Standards\Squiz\Sniffs\Commenting;
 
 use PHP_CodeSniffer\Files\File;
+use PHP_CodeSniffer\Interactive\ReplaceOption;
 use PHP_CodeSniffer\Sniffs\Sniff;
 use PHP_CodeSniffer\Util\Tokens;
 
@@ -232,7 +233,9 @@ class InlineCommentSniff implements Sniff
 
         if (preg_match('/^\p{Ll}/u', $commentText) === 1) {
             $error = 'Inline comments must start with a capital letter';
-            $phpcsFile->addError($error, $stackPtr, 'NotCapital');
+
+            $fixOptions = [new ReplaceOption($phpcsFile, 'Capitalize first letter', '// ' . ucfirst($commentText) . PHP_EOL)];
+            $phpcsFile->addInteractivelyFixableError($error, $stackPtr, 'NotCapital', $fixOptions);
         }
 
         // Only check the end of comment character if the start of the comment
@@ -248,7 +251,22 @@ class InlineCommentSniff implements Sniff
 
                 $ender = trim($ender, ' ,');
                 $data  = [$ender];
-                $phpcsFile->addError($error, $lastCommentToken, 'InvalidEndChar', $data);
+
+                // Get the current line's comment text only for the fix.
+                $currentLineComment = trim(substr($tokens[$lastCommentToken]['content'], 2));
+
+                $fixOptions = [];
+                foreach (self::VALID_SENTENCE_END_CHARS as $symbol) {
+                    $fixOptions[] = new ReplaceOption(
+                        $phpcsFile,
+                        'Append a ' . $symbol,
+                        '// ' . rtrim($currentLineComment) . $symbol . PHP_EOL
+                    );
+                }
+
+                $fixOptions[] = new ReplaceOption($phpcsFile, 'Remove comment', '');
+
+                $phpcsFile->addInteractivelyFixableError($error, $lastCommentToken, 'InvalidEndChar', $fixOptions, $data);
             }
         }
 
