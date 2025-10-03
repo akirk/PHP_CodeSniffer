@@ -1056,7 +1056,7 @@ class Runner
         }
 
         // Prompt for action.
-        echo "  [s]kip, [q]uit";
+        echo "  [e]dit, [s]kip, [q]uit";
         if ($fixOptionsData !== null) {
             echo ", or enter number to apply fix";
         }
@@ -1066,6 +1066,10 @@ class Runner
         $input = trim(fgets(STDIN));
 
         switch ($input) {
+            case 'e':
+                $this->editFile($file, $line);
+                return 'needs_reload';
+
             case 's':
                 if ($fixOptionsData !== null) {
                     $file->skipInteractiveFix($line, $column, $source);
@@ -1096,5 +1100,64 @@ class Runner
                 echo "Invalid choice. Skipping." . PHP_EOL;
                 return 'skip';
         }
+    }
+
+
+    /**
+     * Open a file in the user's editor at a specific line.
+     *
+     * @param \PHP_CodeSniffer\Files\File $file The file to edit.
+     * @param int                         $line The line number to jump to.
+     *
+     * @return void
+     */
+    private function editFile(File $file, int $line)
+    {
+        // Apply all fixes made so far and write to file so user edits the current state.
+        $fixedContent = $file->fixer->getContents();
+        file_put_contents($file->path, $fixedContent);
+
+        // Check VISUAL first (preferred), then EDITOR.
+        $editor = getenv('VISUAL');
+        if ($editor === false) {
+            $editor = getenv('EDITOR');
+        }
+
+        if ($editor === false) {
+            echo "\033[31mNo editor configured. Please set the VISUAL or EDITOR environment variable.\033[0m" . PHP_EOL;
+            echo 'Examples:' . PHP_EOL;
+            echo '  export VISUAL=vim' . PHP_EOL;
+            echo '  export VISUAL=code' . PHP_EOL;
+            echo '  export EDITOR=nano' . PHP_EOL;
+            return;
+        }
+
+        // Add line number support for common editors.
+        $editorName = strtok(basename($editor), ' ');
+        if (in_array($editorName, ['nano', 'vim', 'vi', 'nvim'], true) === true) {
+            $command = escapeshellcmd($editor) . ' +' . $line . ' ' . escapeshellarg($file->path);
+        } elseif ($editorName === 'emacs') {
+            $command = escapeshellcmd($editor) . ' +' . $line . ' ' . escapeshellarg($file->path);
+        } elseif ($editorName === 'code') {
+            $command = escapeshellcmd($editor) . ' --goto ' . escapeshellarg($file->path . ':' . $line);
+        } elseif ($editorName === 'subl') {
+            // For Sublime Text, use file:line syntax.
+            $command = escapeshellcmd($editor) . ' ' . escapeshellarg($file->path . ':' . $line);
+        } else {
+            // Default: just open the file without line number.
+            $command = escapeshellcmd($editor) . ' ' . escapeshellarg($file->path);
+        }
+
+        echo "Opening file with: $command" . PHP_EOL;
+
+        // Execute editor.
+        system($command, $returnCode);
+
+        // Reload the file content.
+        $file->reloadContent();
+        $file->ruleset->populateTokenListeners();
+        $file->process();
+
+        echo "\033[32mFile reloaded and reprocessed.\033[0m" . PHP_EOL;
     }
 }
